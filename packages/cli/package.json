@@ -1,36 +1,68 @@
 {
-  "name": "@fpd/cli",
-  "version": "0.1.0",
-  "private": true,
-  "description": "CLI for Frontend Performance Debugger",
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "bin": {
-    "fpd": "./bin/fpd.cjs"
+  "name": "@umutdev/fpd-cli",
+  "version": "1.0.2",
+  "description": "Developer-first CLI for frontend performance analysis, root cause detection, and source code correlation.",
+  "license": "MIT",
+  "author": "Umut Can Demir <umutcdemir@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umutdemr/frontend-performance-debugger.git"
   },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+  "homepage": "https://github.com/umutdemr/frontend-performance-debugger#readme",
+  "bugs": {
+    "url": "https://github.com/umutdemr/frontend-performance-debugger/issues"
+  },
+  "keywords": [
+    "frontend",
+    "performance",
+    "debugger",
+    "analysis",
+    "audit",
+    "cli",
+    "web-performance",
+    "performance-debugging",
+    "core-web-vitals",
+    "lighthouse-alternative",
+    "playwright",
+    "source-correlation",
+    "nextjs",
+    "react",
+    "developer-tool",
+    "root-cause-analysis",
+    "performance-audit",
+    "render-blocking",
+    "network-analysis",
+    "web-vitals"
+  ],
+  "bin": {
+    "fpd": "bin/fpd.js"
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "tsup --config tsup.config.ts",
-    "dev": "tsup --watch",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@fpd/core": "workspace:*",
-    "@fpd/shared-types": "workspace:*"
+    "chalk": "^4.1.2",
+    "commander": "^11.0.0",
+    "ora": "^5.4.1",
+    "playwright": "^1.40.0"
   },
   "devDependencies": {
+    "@fpd/core": "workspace:*",
+    "@fpd/shared-types": "workspace:*",
     "tsup": "^8.3.6",
     "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

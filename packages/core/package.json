@@ -1,6 +1,6 @@
 {
   "name": "@fpd/core",
-  "version": "0.1.0",
+  "version": "1.0.2",
   "private": true,
   "description": "Core analysis engine for Frontend Performance Debugger",
   "type": "module",

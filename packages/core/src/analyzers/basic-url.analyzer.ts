@@ -8,7 +8,7 @@ import type {
 export class BasicUrlAnalyzer implements Analyzer {
   readonly name = "basic-url";
   readonly description = "Analyzes URL structure for common issues";
-  readonly categories: Category[] = ["general", "network", "seo"];
+  readonly categories: Category[] = ["general", "network", "seo", "caching"];
 
   async analyze(context: AnalyzerContext): Promise<AnalyzerResult> {
     const startTime = Date.now();
@@ -16,7 +16,7 @@ export class BasicUrlAnalyzer implements Analyzer {
 
     const url = new URL(context.url);
 
-    // Check 1: HTTP instead of HTTPS
+    // Check 1: HTTP instead of HTTPS (only for non-local/public URLs)
     const httpFinding = this.checkHttps(url);
     if (httpFinding) {
       findings.push(httpFinding);
@@ -54,6 +54,11 @@ export class BasicUrlAnalyzer implements Analyzer {
   }
 
   private checkHttps(url: URL): Finding | null {
+    // Local development URLs should not be flagged as critical for HTTP usage
+    if (this.isLocalUrl(url)) {
+      return null;
+    }
+
     if (url.protocol === "http:") {
       return {
         id: "basic-url-no-https",
@@ -76,6 +81,7 @@ export class BasicUrlAnalyzer implements Analyzer {
         learnMoreUrl: "https://web.dev/why-https-matters/",
       };
     }
+
     return null;
   }
 
@@ -241,5 +247,19 @@ export class BasicUrlAnalyzer implements Analyzer {
     }
 
     return null;
+  }
+
+  /**
+   * Detect whether the URL is a local/dev URL
+   */
+  private isLocalUrl(url: URL): boolean {
+    const hostname = url.hostname.toLowerCase();
+
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local")
+    );
   }
 }

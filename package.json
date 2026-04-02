@@ -1,6 +1,6 @@
 {
   "name": "fpd",
-  "version": "0.1.0",
+  "version": "1.0.2",
   "private": true,
   "description": "Frontend Performance Debugger — open-source developer tool for analyzing frontend performance",
   "author": "",

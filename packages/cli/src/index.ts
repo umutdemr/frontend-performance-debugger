@@ -6,7 +6,7 @@ import { scanCommand } from "./commands/scan.js";
 /**
  * CLI version
  */
-const VERSION = "0.1.0";
+const VERSION = "1.0.2";
 
 /**
  * Print help message
@@ -29,31 +29,28 @@ COMMANDS
   analyze <url>
       Analyze a live URL in a real browser session.
       Reports performance, network, rendering, assets, caching,
-      SEO/security issues, score breakdown, and root causes.
+      and correlates results with local source code.
 
   scan <path>
-      Analyze a local project/code path for static issues.
-      Useful when you want local inspection without runtime browser analysis.
+      Statically analyze a local project path for performance patterns.
+      Does not require a running browser session.
 
   analyzers
-      List all available analyzers and the checks they perform.
+      List all available analyzers and their specific checks.
 
 OPTIONS
   --format, -f <format>
-      Output format: terminal | json | markdown
-      Default: terminal
+      Output format: terminal | json | markdown (Default: terminal)
 
   --output, -o <file>
-      Write the report output to a file instead of stdout.
+      Write the report output to a specified file.
 
   --project, -p <path>
-      Local project path used for source code correlation.
-      When combined with "analyze", FPD attempts to map runtime findings
-      to likely route files and source files.
+      Local project path for source code correlation.
+      Maps runtime findings to your components and routes.
 
   --verbose, -v
-      Show detailed logs such as browser launch, page load timing,
-      framework detection, route detection, and correlation steps.
+      Show detailed logs (browser launch, framework detection, etc.)
 
   --help, -h
       Show this help message.
@@ -63,64 +60,31 @@ OPTIONS
 
 COMMON WORKFLOWS
 
-  Analyze a production site
-    fpd analyze https://github.com
+  Analyze a live site:
+    fpd analyze https://example.com
 
-  Analyze a production site with verbose logs
-    fpd analyze https://github.com --verbose
+  Analyze with verbose logs:
+    fpd analyze https://example.com --verbose
 
-  Analyze and export JSON
-    fpd analyze https://github.com --format json --output report.json
-
-  Analyze and export Markdown
-    fpd analyze https://github.com --format markdown --output report.md
-
-  Analyze localhost
-    fpd analyze http://localhost:3000
-
-  Analyze localhost with source correlation
+  Analyze localhost with source correlation:
     fpd analyze http://localhost:3000 --project . --verbose
 
-  Analyze a different local dev port
-    fpd analyze http://localhost:5173 --project . --verbose
+  Analyze and export results:
+    fpd analyze https://example.com --format json --output report.json
+    fpd analyze https://example.com --format markdown --output report.md
 
-  Analyze a live site and map findings to a local project
-    fpd analyze https://example.com --project ./my-project --verbose
-
-  Analyze with an absolute Windows project path
-    fpd analyze http://localhost:3000 --project C:\\Users\\UMUT\\Desktop\\my-project --verbose
-
-  Export JSON for CI / automation
-    fpd analyze https://example.com -f json -o report.json
-
-  Export Markdown for documentation
-    fpd analyze https://example.com -f markdown -o report.md
-
-  Scan the current project
+  Scan a local project:
     fpd scan .
-
-  Scan a specific source directory
     fpd scan ./src
 
-  Scan and export Markdown
-    fpd scan . --format markdown --output local-scan.md
-
-  List all analyzers
-    fpd analyzers
-
 NOTES
-  - Use --project with "analyze" to enable framework detection,
-    route mapping, and source correlation.
-  - Localhost URLs such as http://localhost:3000 are supported.
-  - If no protocol is provided, FPD defaults to:
-      https:// for normal domains
-      http:// for localhost / local IPs
-  - JSON output is useful for automation and CI workflows.
-  - Markdown output is useful for reports, documentation, and sharing results.
-  - Source correlation is best-effort and currently MVP-oriented.
+  - Use --project with "analyze" to enable framework-aware mapping.
+  - Localhost URLs (e.g., http://localhost:3000) are fully supported.
+  - If no protocol is provided, FPD defaults to https:// (or http:// for localhost).
+  - Source correlation is currently optimized for React and Next.js projects.
 
 MORE INFO
-  Repository:
+  Documentation & Repository:
     https://github.com/umutdemr/frontend-performance-debugger
 `);
 }
@@ -221,7 +185,6 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const parsed = parseArgs(args);
 
-  // Handle flags
   if (parsed.help) {
     printHelp();
     process.exit(0);
@@ -232,11 +195,9 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Handle commands
   if (parsed.command === "analyze") {
     if (!parsed.url) {
-      console.error("Error: URL is required");
-      console.error("Usage: fpd analyze <url>");
+      console.error("Error: URL is required. Usage: fpd analyze <url>");
       process.exit(1);
     }
 
@@ -251,8 +212,7 @@ async function main(): Promise<void> {
 
   if (parsed.command === "scan") {
     if (!parsed.url) {
-      console.error("Error: Path is required");
-      console.error("Usage: fpd scan <path>");
+      console.error("Error: Path is required. Usage: fpd scan <path>");
       process.exit(1);
     }
 
@@ -269,7 +229,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // No command or unknown command
   if (!parsed.command) {
     printHelp();
     process.exit(0);
@@ -280,7 +239,6 @@ async function main(): Promise<void> {
   process.exit(1);
 }
 
-// Run CLI
 main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);

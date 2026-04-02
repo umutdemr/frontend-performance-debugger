@@ -62,7 +62,7 @@ export function createReport(input: CreateReportInput): Report {
     summary,
     tool: {
       name: "fpd",
-      version: "0.1.0",
+      version: "1.0.2",
     },
   };
 
