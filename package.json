@@ -1,10 +1,10 @@
 {
   "name": "fpd",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Frontend Performance Debugger — open-source developer tool for analyzing frontend performance",
   "author": "",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"

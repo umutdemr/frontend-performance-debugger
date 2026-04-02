@@ -1,21 +1,116 @@
-MIT License
+Frontend Performance Debugger (FPD) Community Use License
+Version 1.0
 
 Copyright (c) 2026 Umut Can Demir
+All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Definitions
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+"Software" means the Frontend Performance Debugger (FPD) project, including
+its source code, binaries, compiled output, CLI tooling, package contents,
+documentation, examples, and related files provided by the Licensor.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+"Licensor" means Umut Can Demir.
+
+"You" means any individual or legal entity using the Software.
+
+2. Permitted Use
+
+Subject to the terms of this License, You are permitted to:
+
+a) use the Software for personal, educational, evaluation, internal, and commercial purposes;
+b) install and run the Software locally, in development environments, CI pipelines,
+internal company workflows, and production-adjacent diagnostic workflows;
+c) use the npm package and distributed CLI to analyze URLs, local projects, and reports;
+d) modify the Software privately for internal use only, provided that such modifications
+are not redistributed, published, relicensed, or represented as Your own product.
+
+3. Restrictions
+
+You may NOT, without prior written permission from the Licensor:
+
+a) copy, redistribute, republish, sublicense, sell, or otherwise distribute
+the Software or any substantial portion of its source code;
+
+b) publish the Software, whether modified or unmodified, to any public repository,
+package registry, marketplace, or software distribution channel;
+
+c) create, distribute, market, or publish derivative works based on the Software
+as a standalone product, competing product, or rebranded product;
+
+d) represent the Software, or any modified version of it, as Your own original work;
+
+e) remove, alter, obscure, or misrepresent any copyright notice, authorship notice,
+repository origin, package origin, or license notice contained in the Software;
+
+f) use the Software’s source code to create a substantially similar commercial or
+publicly distributed competing tool derived from the Software;
+
+g) mirror, fork for redistribution, package, or resell the Software in source or binary form.
+
+4. Internal Modifications
+
+You may modify the Software for private internal use.
+However, such modified versions:
+
+a) may not be publicly shared;
+b) may not be redistributed;
+c) may not be sold, sublicensed, or relicensed;
+d) may not be published as a separate package, repository, or service claiming independent authorship.
+
+5. Ownership
+
+The Software is licensed, not sold.
+All rights, title, and interest in the Software remain exclusively with the Licensor.
+
+No ownership rights are transferred under this License.
+
+6. Attribution
+
+Use of the Software does not grant You the right to claim authorship, origin,
+or ownership of the Software.
+
+You must not present the Software, in whole or in part, as if it were created by You.
+
+If the Software is referenced publicly, attribution to the Licensor and original repository
+must be preserved where reasonably applicable.
+
+7. Commercial Use Clarification
+
+Commercial use of the Software itself is permitted only in the sense of using the tool
+to analyze, inspect, or debug software, websites, or systems.
+
+Commercial use does NOT include:
+
+a) redistribution of the Software;
+b) republishing the Software;
+c) selling the Software or modified versions of it;
+d) packaging the Software as Your own commercial offering;
+e) offering the Software as a competing product derived from the Software’s codebase.
+
+8. Termination
+
+This License terminates automatically if You violate any term of this License.
+
+Upon termination, You must immediately stop using the Software in any unauthorized way
+and destroy all unauthorized redistributed or published copies in Your possession or control.
+
+9. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NON-INFRINGEMENT.
+
+10. Limitation of Liability
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+11. Permission Requests
+
+For redistribution, relicensing, public forks intended for distribution, white-labeling,
+commercial embedding, or derivative publishing, prior written permission from the Licensor is required.
+
+Contact:
+umutcdemir@gmail.com

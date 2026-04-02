@@ -2,6 +2,8 @@
 
 **A developer-first CLI for analyzing frontend performance, identifying bottlenecks, extracting root causes, and mapping runtime issues back to source code.**
 
+[![npm version](https://img.shields.io/npm/v/@umutdev/fpd-cli?color=cb3837&logo=npm)](https://www.npmjs.com/package/@umutdev/fpd-cli)
+[![npm downloads](https://img.shields.io/npm/dw/@umutdev/fpd-cli)](https://www.npmjs.com/package/@umutdev/fpd-cli)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D8.0.0-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -28,6 +30,12 @@ The goal is simple:
 
 > move from **audit output** to **debugging workflow**
 
+FPD is also available as an npm package:
+
+```bash
+npm install  @umutdev/fpd-cli
+```
+
 ---
 
 ## Why FPD?
@@ -52,6 +60,23 @@ FPD is intended to help you get closer to:
 
 ---
 
+## What makes FPD different?
+
+Most tools are good at reporting metrics, synthetic audits, or static checks. FPD is designed to make frontend performance issues more **debuggable**.
+
+Its key differentiators are:
+
+- **runtime analysis in a real browser**
+- **root-cause-oriented reporting**
+- **framework and route detection**
+- **source correlation with likely file-level hints**
+- **developer-first terminal output**
+- **support for both live URL analysis and local project scanning**
+
+This makes FPD useful not only for audits, but for actual engineering triage and debugging.
+
+---
+
 ## Core Value
 
 FPD is designed around four practical questions:
@@ -72,7 +97,14 @@ That makes it useful not only as a scoring tool, but as a developer tool.
 - Node.js `>= 18.0.0`
 - pnpm `>= 8.0.0`
 
-### Clone and install
+### Option 1 — Install from npm
+
+```bash
+npm install @umutdev/fpd-cli
+npx playwright install chromium
+```
+
+### Option 2 — Run from source
 
 ```bash
 git clone https://github.com/umutdemr/frontend-performance-debugger.git
@@ -87,7 +119,7 @@ pnpm exec playwright install chromium
 #### First analysis
 
 ```bash
-fpd analyze https://example.com
+fpd analyze https://github.com
 ```
 
 #### Analyze a local app with source correlation
@@ -99,7 +131,7 @@ fpd analyze http://localhost:3000 --project . --verbose
 #### Export JSON
 
 ```bash
-fpd analyze https://example.com --format json --output report.json
+fpd analyze https://github.com --format json --output report.json
 ```
 
 ---
@@ -144,10 +176,10 @@ The result is more actionable than a flat list of metrics.
 
 Findings are classified in two ways:
 
-| Dimension | Values                                       |
-| --------- | -------------------------------------------- |
-| Severity  | critical, warning, info, success             |
-| Priority  | quick-win, high-impact, investigate, monitor |
+| Dimension | Values                                               |
+| --------- | ---------------------------------------------------- |
+| Severity  | `critical`, `warning`, `info`, `success`             |
+| Priority  | `quick-win`, `high-impact`, `investigate`, `monitor` |
 
 This helps teams separate urgent issues from optimization opportunities.
 
@@ -198,29 +230,36 @@ This is one of the most important differentiators of the tool.
 ### Framework Awareness
 
 FPD can detect framework context from the project and use that context in reporting.
-
-Examples include:
+Supported and commonly detected examples include:
 
 - React
+- Vue
+- Angular
 - Next.js
+- Nuxt
+- Remix
+- SvelteKit
+- Astro
+- Vite
 - App Router / Pages Router route detection
-- common modern frontend project structures
 
 ### Multiple Output Formats
 
 FPD supports:
 
-| Format   | Use Case                          |
-| -------- | --------------------------------- |
-| terminal | everyday local debugging          |
-| json     | automation, CI, integrations      |
-| markdown | documentation, reporting, sharing |
+| Format     | Use Case                          |
+| ---------- | --------------------------------- |
+| `terminal` | everyday local debugging          |
+| `json`     | automation, CI, integrations      |
+| `markdown` | documentation, reporting, sharing |
 
 ---
 
 ## Command Reference
 
-### fpd analyze <url>
+FPD provides three primary CLI workflows: live analysis, local scanning, and analyzer discovery.
+
+### `fpd analyze <url>`
 
 Analyze a live URL in a real browser session.
 
@@ -239,13 +278,13 @@ This command reports:
 #### Basic usage
 
 ```bash
-fpd analyze https://example.com
+fpd analyze https://github.com
 ```
 
 #### Verbose output
 
 ```bash
-fpd analyze https://example.com --verbose
+fpd analyze https://github.com --verbose
 ```
 
 #### With source correlation
@@ -257,13 +296,13 @@ fpd analyze http://localhost:3000 --project . --verbose
 #### Export JSON
 
 ```bash
-fpd analyze https://example.com --format json --output report.json
+fpd analyze https://github.com --format json --output report.json
 ```
 
 #### Export Markdown
 
 ```bash
-fpd analyze https://example.com --format markdown --output report.md
+fpd analyze https://github.com --format markdown --output report.md
 ```
 
 #### Analyze with an explicit project path
@@ -275,10 +314,10 @@ fpd analyze https://example.com --project ./my-project --verbose
 #### Windows absolute path example
 
 ```bash
-fpd analyze http://localhost:3000 --project ./my-project --verbose
+fpd analyze http://localhost:3000 --project C:\Users\UMUT\Desktop\my-project --verbose
 ```
 
-### fpd scan <path>
+### `fpd scan <path>`
 
 Analyze a local project or source directory without running a runtime browser session.
 
@@ -308,7 +347,7 @@ fpd scan . --format markdown --output local-scan.md
 fpd scan . --format json --output local-scan.json
 ```
 
-### fpd analyzers
+### `fpd analyzers`
 
 List the currently available analyzers and the checks they perform.
 
@@ -323,13 +362,13 @@ fpd analyzers
 #### Production site audit
 
 ```bash
-fpd analyze https://example.com
+fpd analyze https://github.com
 ```
 
 #### Production site with machine-readable output
 
 ```bash
-fpd analyze https://example.com --format json --output report.json
+fpd analyze https://github.com --format json --output report.json
 ```
 
 #### Local development debugging
@@ -359,7 +398,7 @@ fpd scan .
 #### Shareable Markdown report
 
 ```bash
-fpd analyze https://example.com --format markdown --output report.md
+fpd analyze https://github.com --format markdown --output report.md
 ```
 
 ---
@@ -395,7 +434,7 @@ Score: 41/100
   └─ SEO/Security: 0/15
 ```
 
-This output is intended to be readable in daily terminal workflows while still being useful for engineering decision-making.
+When source correlation is enabled, findings can also include likely file-level references and contextual snippets.
 
 ---
 
@@ -416,7 +455,11 @@ This output is intended to be readable in daily terminal workflows while still b
 | Root cause extraction                | ✅     |
 | Framework detection                  | ✅     |
 | Route detection                      | ✅     |
+| Route-to-source mapping              | ✅     |
 | Source correlation                   | ✅     |
+| Local project scan                   | ✅     |
+| Localhost analysis                   | ✅     |
+| Terminal output                      | ✅     |
 | JSON output                          | ✅     |
 | Markdown output                      | ✅     |
 
@@ -435,7 +478,9 @@ FPD currently includes:
 - framework detection
 - route detection
 - source code correlation
+- local project scanning
 - terminal, JSON, and Markdown output
+- published npm CLI package
 
 This already makes it useful for real debugging workflows.
 
@@ -528,7 +573,7 @@ Current limitations include:
 - framework-aware fix intelligence is still growing
 - the web dashboard is planned but not yet a core part of the workflow
 
-These limitations are known, intentional, and part of the current development direction.
+Even in its current state, FPD is already capable of producing useful, source-aware debugging reports for real projects.
 
 ---
 
@@ -589,12 +634,12 @@ Useful contribution areas include:
 
 ---
 
-## Repository
+## Links
 
-GitHub: [https://github.com/umutdemr/frontend-performance-debugger](https://github.com/umutdemr/frontend-performance-debugger)
+- npm: [https://www.npmjs.com/package/@umutdev/fpd-cli](https://www.npmjs.com/package/@umutdev/fpd-cli)
 
 ---
 
 ## License
 
-MIT
+Source-available. See the LICENSE file for full terms.
