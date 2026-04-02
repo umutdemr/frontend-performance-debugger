@@ -6,7 +6,7 @@ import { scanCommand } from "./commands/scan.js";
 /**
  * CLI version
  */
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
 
 /**
  * Print help message

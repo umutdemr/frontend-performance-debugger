@@ -7,7 +7,7 @@ Unlike generic audit tools, FPD is designed to help you move from **finding** to
 ## Install
 
 ```bash
-npm install -g @umutdev/fpd-cli
+npm install @umutdev/fpd-cli
 ```
 
 If needed:
@@ -146,4 +146,4 @@ https://github.com/umutdemr/frontend-performance-debugger
 
 ## License
 
-MIT
+Source-available. See the LICENSE file for full terms.
