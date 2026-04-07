@@ -18,6 +18,9 @@ export interface BrowserOptions {
 
   /** Timeout for page load (ms) */
   timeout?: number;
+
+  /** Use strict networkidle wait (may timeout on complex sites) */
+  strict?: boolean;
 }
 
 export interface PageMetrics {
@@ -211,7 +214,7 @@ export class PlaywrightClient {
       throw new Error("Browser not launched. Call launch() first.");
     }
 
-    const { timeout = 30000 } = options;
+    const { timeout = 60000, strict = false } = options;
     const page = await this.context.newPage();
 
     const requests: NetworkRequest[] = [];
@@ -258,18 +261,50 @@ export class PlaywrightClient {
       }
     });
 
-    // Navigate to page
-    const response = await page.goto(url, {
-      waitUntil: "networkidle",
-      timeout,
-    });
+    let response = null;
 
-    if (!response) {
-      throw new Error("Failed to load page");
+    if (strict) {
+      response = await page.goto(url, {
+        waitUntil: "networkidle",
+        timeout,
+      });
+    } else {
+      try {
+        response = await page.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout,
+        });
+      } catch (primaryError) {
+        console.warn(
+          "[FPD] Primary navigation failed, retrying with load state...",
+        );
+
+        try {
+          response = await page.goto(url, {
+            waitUntil: "commit",
+            timeout,
+          });
+        } catch (retryError) {
+          throw new Error(
+            `Failed to load page after retry: ${retryError instanceof Error ? retryError.message : "Unknown error"}`,
+          );
+        }
+      }
     }
 
-    // Wait a bit for LCP and CLS to stabilize
-    await page.waitForTimeout(1000);
+    if (!response) {
+      throw new Error("Failed to load page: No response received");
+    }
+
+    try {
+      await page.waitForLoadState("load", { timeout: 15000 });
+    } catch {}
+
+    try {
+      await page.waitForLoadState("networkidle", { timeout: 5000 });
+    } catch {}
+
+    await page.waitForTimeout(1500);
 
     // Simulate user interaction for FID (click on body)
     try {
@@ -281,7 +316,6 @@ export class PlaywrightClient {
     // Wait for interaction metrics
     await page.waitForTimeout(500);
 
-    // Collect all metrics
     const timing = await this.collectTiming(page);
     const webVitals = await this.collectWebVitals(page);
     const dom = await this.collectDOMMetrics(page);

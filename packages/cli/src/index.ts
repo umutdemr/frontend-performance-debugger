@@ -16,7 +16,7 @@ function printHelp(): void {
 Frontend Performance Debugger (fpd) v${VERSION}
 
 Developer-first CLI for frontend performance analysis, root cause detection,
-and source code correlation.
+source code correlation, and local report viewing.
 
 USAGE
   fpd analyze <url> [options]
@@ -49,6 +49,10 @@ OPTIONS
       Local project path for source code correlation.
       Maps runtime findings to your components and routes.
 
+  --open
+      Start the local report viewer after analysis and expose the report
+      on a local HTTP server.
+
   --verbose, -v
       Show detailed logs (browser launch, framework detection, etc.)
 
@@ -69,6 +73,9 @@ COMMON WORKFLOWS
   Analyze localhost with source correlation:
     fpd analyze http://localhost:3000 --project . --verbose
 
+  Analyze and open local report viewer:
+    fpd analyze http://localhost:3000 --project . --open
+
   Analyze and export results:
     fpd analyze https://example.com --format json --output report.json
     fpd analyze https://example.com --format markdown --output report.md
@@ -79,6 +86,7 @@ COMMON WORKFLOWS
 
 NOTES
   - Use --project with "analyze" to enable framework-aware mapping.
+  - Use --open to start a local viewer for the generated report.
   - Localhost URLs (e.g., http://localhost:3000) are fully supported.
   - If no protocol is provided, FPD defaults to https:// (or http:// for localhost).
   - Source correlation is currently optimized for React and Next.js projects.
@@ -105,6 +113,7 @@ function parseArgs(args: string[]): {
   format: OutputFormat;
   output?: string;
   project?: string;
+  open: boolean;
   verbose: boolean;
   help: boolean;
   version: boolean;
@@ -115,6 +124,7 @@ function parseArgs(args: string[]): {
     format: "terminal" as OutputFormat,
     output: undefined as string | undefined,
     project: undefined as string | undefined,
+    open: false,
     verbose: false,
     help: false,
     version: false,
@@ -137,6 +147,10 @@ function parseArgs(args: string[]): {
       case "--verbose":
       case "-v":
         result.verbose = true;
+        break;
+
+      case "--open":
+        result.open = true;
         break;
 
       case "--format":
@@ -205,6 +219,7 @@ async function main(): Promise<void> {
       format: parsed.format,
       output: parsed.output,
       project: parsed.project,
+      open: parsed.open,
       verbose: parsed.verbose,
     });
     return;

@@ -14,106 +14,90 @@ import type { Report, CorrelationResult } from "@fpd/shared-types";
 import { formatAsJson } from "../formatters/json.js";
 import { formatAsTerminal } from "../formatters/terminal.js";
 import { formatAsMarkdown } from "../formatters/markdown.js";
+import { startViewerServer } from "../viewer/viewer-server.js";
 
-/**
- * Output format options
- */
 export type OutputFormat = "terminal" | "json" | "markdown";
 
-/**
- * Analyze command options
- */
 export interface AnalyzeCommandOptions {
-  /** Output format */
   format?: OutputFormat;
-
-  /** Output to file instead of stdout */
   output?: string;
-
-  /** Show verbose output */
   verbose?: boolean;
-
-  /** Local project root directory for source correlation */
   project?: string;
+  open?: boolean;
 }
 
-/**
- * Run the analyze command
- */
+const ANALYZERS = [
+  BasicUrlAnalyzer,
+  SecurityAnalyzer,
+  SeoAnalyzer,
+  PerformanceAnalyzer,
+  NetworkAnalyzer,
+  AssetsAnalyzer,
+  CacheAnalyzer,
+  RenderBlockingAnalyzer,
+] as const;
+
+const FORMATTERS: Record<OutputFormat, (report: Report) => string> = {
+  json: formatAsJson,
+  markdown: formatAsMarkdown,
+  terminal: formatAsTerminal,
+};
+
+const BROWSER_COMMANDS: Record<string, (url: string) => string> = {
+  win32: (url) => `start "" "${url}"`,
+  darwin: (url) => `open "${url}"`,
+  linux: (url) =>
+    `xdg-open "${url}" 2>/dev/null || sensible-browser "${url}" 2>/dev/null || echo "Open ${url} in your browser"`,
+};
+
 export async function analyzeCommand(
   url: string,
   options: AnalyzeCommandOptions = {},
 ): Promise<void> {
-  const { format = "terminal", verbose = false, project } = options;
+  const {
+    format = "terminal",
+    verbose = false,
+    project,
+    open = false,
+  } = options;
 
-  // Validate URL
   if (!url) {
-    console.error("Error: URL is required");
-    console.error("Usage: fpd analyze <url>");
+    console.error("Error: URL is required\nUsage: fpd analyze <url>");
     process.exit(1);
   }
 
-  // Normalize URL
   const normalizedUrl = normalizeUrl(url);
 
   if (verbose) {
     console.log(`Analyzing: ${normalizedUrl}\n`);
-    if (project) {
-      console.log(`Project root: ${project}`);
-      console.log(`Source correlation mode enabled\n`);
-    }
+    if (project)
+      console.log(
+        `Project root: ${project}\nSource correlation mode enabled\n`,
+      );
   }
 
   try {
-    // Create engine and register analyzers
     const engine = createEngine({ verbose });
 
-    // Register all analyzers
-    engine.addAnalyzer(new BasicUrlAnalyzer());
-    engine.addAnalyzer(new SecurityAnalyzer());
-    engine.addAnalyzer(new SeoAnalyzer());
-    engine.addAnalyzer(new PerformanceAnalyzer());
-    engine.addAnalyzer(new NetworkAnalyzer());
-    engine.addAnalyzer(new AssetsAnalyzer());
-    engine.addAnalyzer(new CacheAnalyzer());
-    engine.addAnalyzer(new RenderBlockingAnalyzer());
+    ANALYZERS.forEach((Analyzer) => engine.addAnalyzer(new Analyzer()));
 
     let report: Report = await engine.analyze(normalizedUrl);
 
-    // Source Correlation
     if (project) {
-      if (verbose) {
-        console.log("Running source code correlation...");
-      }
-
-      const correlationResult: CorrelationResult = await correlateFindings(
-        report.findings,
-        normalizedUrl,
-        project,
-      );
-      report = {
-        ...report,
-        correlationResult,
-      };
-
-      if (verbose) {
-        console.log(
-          `Correlation complete: ${correlationResult.highConfidenceCount} high confidence matches found`,
-        );
-        console.log(
-          `Success rate: ${Math.round(correlationResult.correlationRate * 100)}%\n`,
-        );
-      }
+      report = await runCorrelation(report, normalizedUrl, project, verbose);
     }
 
-    // Format and output
-    const output = formatReport(report, format);
+    const formattedOutput = formatReport(report, format);
 
     if (options.output) {
-      await writeToFile(options.output, output);
+      await writeToFile(options.output, formattedOutput);
       console.log(`Report saved to: ${options.output}`);
     } else {
-      console.log(output);
+      console.log(formattedOutput);
+    }
+
+    if (open) {
+      await launchViewer(report, verbose);
     }
   } catch (error) {
     console.error(
@@ -124,45 +108,97 @@ export async function analyzeCommand(
   }
 }
 
-/**
- * Normalize URL (add https:// if missing)
- */
+async function runCorrelation(
+  report: Report,
+  url: string,
+  project: string,
+  verbose: boolean,
+): Promise<Report> {
+  if (verbose) console.log("Running source code correlation...");
+
+  const correlationResult: CorrelationResult = await correlateFindings(
+    report.findings,
+    url,
+    project,
+  );
+
+  if (verbose) {
+    console.log(
+      `Correlation complete: ${correlationResult.highConfidenceCount} high confidence matches found`,
+    );
+    console.log(
+      `Success rate: ${Math.round(correlationResult.correlationRate * 100)}%\n`,
+    );
+  }
+
+  return { ...report, correlationResult };
+}
+
+async function launchViewer(report: Report, verbose: boolean): Promise<void> {
+  if (verbose) console.log("Starting local viewer...");
+
+  const viewer = await startViewerServer(report);
+
+  console.log(`\nViewer available at: ${viewer.url}`);
+  console.log("Press Ctrl+C to stop the local viewer.");
+
+  await openBrowser(viewer.url);
+
+  await waitForExitSignal(async () => {
+    if (verbose) console.log("\nShutting down viewer...");
+    await viewer.close();
+  });
+}
+
+async function openBrowser(url: string): Promise<void> {
+  try {
+    const { exec } = await import("node:child_process");
+    const command = BROWSER_COMMANDS[process.platform];
+
+    if (command) {
+      exec(command(url));
+    } else {
+      console.log(`Open ${url} in your browser`);
+    }
+  } catch {
+    console.log(`Open ${url} in your browser`);
+  }
+}
+
+const LOCAL_PATTERN = /^(\d+\.\d+\.\d+\.\d+:|localhost:)/;
+
 function normalizeUrl(url: string): string {
-  // Local addresses (localhost, 127.0.0.1) should use http
-  if (
-    (url.includes("localhost:") || url.match(/^\d+\.\d+\.\d+\.\d+:/)) &&
-    !url.startsWith("http://") &&
-    !url.startsWith("https://")
-  ) {
-    return `http://${url}`;
-  }
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
 
-  // Regular URLs use https by default
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    return `https://${url}`;
-  }
-  return url;
+  const protocol = LOCAL_PATTERN.test(url) ? "http" : "https";
+  return `${protocol}://${url}`;
 }
 
-/**
- * Format report based on output format
- */
 function formatReport(report: Report, format: OutputFormat): string {
-  switch (format) {
-    case "json":
-      return formatAsJson(report);
-    case "markdown":
-      return formatAsMarkdown(report);
-    case "terminal":
-    default:
-      return formatAsTerminal(report);
-  }
+  return (FORMATTERS[format] ?? FORMATTERS.terminal)(report);
 }
 
-/**
- * Write output to file
- */
 async function writeToFile(filePath: string, content: string): Promise<void> {
   const { writeFile } = await import("node:fs/promises");
   await writeFile(filePath, content, "utf-8");
+}
+
+async function waitForExitSignal(onExit: () => Promise<void>): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let shuttingDown = false;
+
+    const shutdown = async (): Promise<void> => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+
+      try {
+        await onExit();
+      } finally {
+        resolve();
+      }
+    };
+
+    process.once("SIGINT", () => void shutdown());
+    process.once("SIGTERM", () => void shutdown());
+  });
 }
