@@ -125,7 +125,7 @@ fpd analyze https://github.com
 #### Analyze a local app with source correlation
 
 ```bash
-fpd analyze http://localhost:3000 --project . --verbose
+fpd analyze http://localhost:3000 --project . --verbose --open
 ```
 
 #### Export JSON
@@ -357,7 +357,7 @@ fpd analyze https://example.com --project ./my-project --verbose
 #### Windows absolute path example
 
 ```bash
-fpd analyze http://localhost:3000 --project C:\Users\UMUT\Desktop\my-project --verbose
+fpd analyze http://localhost:3000 --project ./my-project --verbose
 ```
 
 ### `fpd scan <path>`
