@@ -182,6 +182,55 @@ export function getViewerStyles(scoreAngle: number): string {
     }
 
     /* ═══════════════════════════════════════
+       Environment Chips & Banners (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .meta-chip-warning {
+      background: rgba(251, 191, 36, 0.15);
+      border-color: rgba(251, 191, 36, 0.3);
+    }
+    .meta-chip-warning .meta-chip-value { color: #fbbf24; }
+
+    .meta-chip-success {
+      background: rgba(34, 197, 94, 0.15);
+      border-color: rgba(34, 197, 94, 0.3);
+    }
+    .meta-chip-success .meta-chip-value { color: #22c55e; }
+
+    .meta-chip-info {
+      background: rgba(96, 165, 250, 0.15);
+      border-color: rgba(96, 165, 250, 0.3);
+    }
+    .meta-chip-info .meta-chip-value { color: #60a5fa; }
+
+    .env-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 20px;
+      border-radius: 16px;
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.22);
+      margin-bottom: 8px;
+    }
+
+    .env-banner-icon {
+      font-size: 1.2rem;
+      flex-shrink: 0;
+      line-height: 1.4;
+    }
+
+    .env-banner-text {
+      color: var(--text-soft);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    .env-banner-text strong {
+      color: #fbbf24;
+    }
+
+    /* ═══════════════════════════════════════
        Hero Section
        ═══════════════════════════════════════ */
 
@@ -465,6 +514,20 @@ export function getViewerStyles(scoreAngle: number): string {
       color: var(--text-muted);
     }
 
+    .breakdown-collapsed {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--critical);
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: rgba(248, 113, 113, 0.12);
+      border: 1px solid rgba(248, 113, 113, 0.22);
+    }
+
     .bar-track {
       height: 8px;
       border-radius: 999px;
@@ -481,6 +544,71 @@ export function getViewerStyles(scoreAngle: number): string {
     .bar-good { background: linear-gradient(90deg, #22c55e, #4ade80); }
     .bar-ok { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
     .bar-bad { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+    /* ═══════════════════════════════════════
+       Score Breakdown Details (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .score-breakdown-details {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(148, 163, 184, 0.10);
+    }
+
+    .breakdown-details-title {
+      margin: 0 0 12px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .breakdown-details-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .breakdown-details-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .breakdown-details-label {
+      font-size: 0.86rem;
+      color: var(--text-soft);
+    }
+
+    .breakdown-details-value {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text);
+      font-family: var(--font-mono);
+    }
+
+    .breakdown-details-value.value-negative {
+      color: var(--critical);
+    }
+
+    .breakdown-details-value.value-positive {
+      color: var(--success);
+    }
+
+    .breakdown-details-value.value-final {
+      font-size: 1.1rem;
+      color: var(--accent);
+    }
+
+    .breakdown-details-divider {
+      height: 1px;
+      background: rgba(148, 163, 184, 0.12);
+      margin: 4px 0;
+    }
 
     /* ═══════════════════════════════════════
        Severity
@@ -529,6 +657,34 @@ export function getViewerStyles(scoreAngle: number): string {
       font-size: 1rem;
       font-weight: 800;
       letter-spacing: -0.02em;
+    }
+
+    /* ═══════════════════════════════════════
+       Findings Summary Notes (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .findings-summary-note {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .summary-note-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(251, 191, 36, 0.06);
+      border: 1px solid rgba(251, 191, 36, 0.12);
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .summary-note-icon {
+      flex-shrink: 0;
+      font-size: 0.9rem;
     }
 
     /* ═══════════════════════════════════════
@@ -709,6 +865,219 @@ export function getViewerStyles(scoreAngle: number): string {
     .confidence-low { background: rgba(148, 163, 184, 0.12); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.18); }
 
     /* ═══════════════════════════════════════
+       Ownership Badges (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .ownership-badge {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 6px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .ownership-app-owned {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.25);
+    }
+    .ownership-framework-owned {
+      background: rgba(168, 85, 247, 0.15);
+      color: #a78bfa;
+      border: 1px solid rgba(168, 85, 247, 0.25);
+    }
+    .ownership-config-owned {
+      background: rgba(251, 191, 36, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(251, 191, 36, 0.25);
+    }
+    .ownership-infra-owned {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+    .ownership-third-party {
+      background: rgba(156, 163, 175, 0.15);
+      color: #9ca3af;
+      border: 1px solid rgba(156, 163, 175, 0.25);
+    }
+
+    /* ═══════════════════════════════════════
+       Action & Priority Badges (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .action-badge {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 6px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      white-space: nowrap;
+      background: rgba(139, 92, 246, 0.15);
+      color: #a78bfa;
+      border: 1px solid rgba(139, 92, 246, 0.25);
+    }
+
+    .priority-quick-win {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+    .priority-high-impact {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .priority-investigate {
+      background: rgba(96, 165, 250, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(96, 165, 250, 0.25);
+    }
+    .priority-monitor {
+      background: rgba(148, 163, 184, 0.12);
+      color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.20);
+    }
+
+    /* ═══════════════════════════════════════
+       Downgraded & Environment Notes (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .downgraded-badge {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 6px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      background: rgba(251, 191, 36, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      white-space: nowrap;
+    }
+
+    .env-note-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.18);
+      border-radius: 12px;
+      margin-top: 14px;
+    }
+
+    .env-note-icon {
+      color: #fbbf24;
+      flex-shrink: 0;
+      font-size: 1rem;
+      line-height: 1.4;
+    }
+
+    .env-note-text {
+      color: var(--text-soft);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
+    .finding-card.env-limited {
+      border-left: 3px solid rgba(251, 191, 36, 0.45);
+    }
+
+    /* ═══════════════════════════════════════
+       Framework Tips & Ownership Hints (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .framework-tip {
+      margin-top: 10px;
+      padding: 10px 14px;
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.16);
+      border-radius: 10px;
+      font-size: 0.86rem;
+      color: #c4b5fd;
+      line-height: 1.5;
+    }
+
+    .framework-tip strong {
+      color: #d8b4fe;
+    }
+
+    .ownership-hint {
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: rgba(75, 85, 99, 0.25);
+      border: 1px solid rgba(75, 85, 99, 0.35);
+      border-radius: 10px;
+      font-size: 0.84rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ownership-hint-label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .ownership-hint-text {
+      color: var(--text-soft);
+    }
+
+    /* ═══════════════════════════════════════
+       Evidence Truncation (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .evidence-truncated {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      font-style: italic;
+      padding: 8px 14px;
+      border-top: 1px dashed rgba(148, 163, 184, 0.10);
+    }
+
+    /* ═══════════════════════════════════════
+       Analysis Notes Section (Phase 1)
+       ═══════════════════════════════════════ */
+
+    .analysis-notes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .analysis-note-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(148, 163, 184, 0.08);
+    }
+
+    .analysis-note-icon {
+      color: var(--accent);
+      flex-shrink: 0;
+      font-size: 0.8rem;
+      margin-top: 2px;
+    }
+
+    .analysis-note-text {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    /* ═══════════════════════════════════════
        Findings
        ═══════════════════════════════════════ */
 
@@ -777,6 +1146,13 @@ export function getViewerStyles(scoreAngle: number): string {
       font-size: 0.82rem;
       font-weight: 500;
       overflow-wrap: anywhere;
+    }
+
+    .finding-badges {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
     }
 
     .toggle-icon {

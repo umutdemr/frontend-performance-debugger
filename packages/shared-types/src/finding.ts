@@ -1,6 +1,7 @@
 import type { Severity } from "./severity.js";
 import type { Category } from "./category.js";
-import type { Evidence } from "./evidence.js";
+import type { Evidence, EvidenceSummary } from "./evidence.js";
+import type { OwnershipHint } from "./ownership.js";
 
 /**
  * Finding ID type (string alias for clarity)
@@ -21,6 +22,17 @@ export type Priority =
   | "investigate"
   | "monitor"
   | "none";
+
+/**
+ * Action type for prioritizing work
+ */
+export type ActionType =
+  | "quick-win" // Easy fix, high impact
+  | "high-impact" // Complex but important
+  | "investigate" // Needs investigation
+  | "monitor" // Just observe
+  | "framework-limitation" // Framework constraints apply
+  | null;
 
 /**
  * Confidence level of the finding
@@ -88,6 +100,11 @@ export interface Finding {
   priority?: Priority;
 
   /**
+   * Post-processing: Action type
+   */
+  actionType?: ActionType;
+
+  /**
    * Post-processing: Confidence score
    */
   confidence?: Confidence;
@@ -96,6 +113,77 @@ export interface Finding {
    * Post-processing: Aggregation metadata
    */
   aggregation?: AggregationMeta;
+
+  // ============================================
+  //  Environment Awareness Fields
+  // ============================================
+
+  /**
+   * Deduplicated evidence with occurrence counts
+   * Populated during post-processing
+   */
+  evidenceSummary?: EvidenceSummary;
+
+  /**
+   * Framework-specific recommendation if detected
+   * e.g., "Use next/image for automatic optimization"
+   */
+  frameworkRecommendation?: string;
+
+  /**
+   * Numeric impact score (0-100) for scoring calculations
+   * Higher = more impactful issue
+   */
+  impactScore?: number;
+
+  /**
+   * Whether finding reliability is limited by environment
+   * True when analyzing localhost/dev where behavior differs from production
+   */
+  environmentLimited?: boolean;
+
+  /**
+   * Caveats/notes about environment limitations
+   * Displayed in reports to explain reduced confidence
+   */
+  environmentNotes?: string[];
+
+  /**
+   * Original severity before environment-based downgrade
+   * Preserved for transparency in reports
+   */
+  originalSeverity?: Severity;
+
+  // ============================================
+  // Ownership Fields
+  // ============================================
+
+  /**
+   * Who is likely responsible for this issue
+   * Helps users understand who should fix it
+   */
+  ownership?: OwnershipHint;
+
+  // ============================================
+  // Source Correlation Fields
+  // ============================================
+
+  /**
+   * File paths where issue may originate (legacy field)
+   * @deprecated Use sourceLocations instead
+   */
+  sourceHints?: string[];
+
+  /**
+   * Line numbers if known (legacy field)
+   * @deprecated Use sourceLocations instead
+   */
+  lineHints?: number[];
+
+  /**
+   * Analyzer that produced this finding
+   */
+  analyzer?: string;
 }
 
 /**
@@ -119,7 +207,46 @@ export type FindingInput = Pick<
       | "metadata"
       | "learnMoreUrl"
       | "priority"
+      | "actionType"
       | "confidence"
       | "aggregation"
+      | "evidenceSummary"
+      | "frameworkRecommendation"
+      | "impactScore"
+      | "environmentLimited"
+      | "environmentNotes"
+      | "originalSeverity"
+      | "ownership"
+      | "sourceHints"
+      | "lineHints"
+      | "analyzer"
     >
   >;
+
+export function createFinding(input: FindingInput): Finding {
+  return {
+    ...input,
+    evidence: input.evidence || [],
+  };
+}
+
+/**
+ * Check if a finding has been downgraded due to environment
+ */
+export function isDowngraded(finding: Finding): boolean {
+  return (
+    finding.originalSeverity !== undefined &&
+    finding.originalSeverity !== finding.severity
+  );
+}
+
+/**
+ * Check if a finding has environment limitations
+ */
+export function hasEnvironmentLimitations(finding: Finding): boolean {
+  return (
+    finding.environmentLimited === true ||
+    (finding.environmentNotes !== undefined &&
+      finding.environmentNotes.length > 0)
+  );
+}

@@ -1,4 +1,4 @@
-import type { FindingId, FindingCategory } from "./finding";
+import type { FindingId, FindingCategory, Confidence } from "./finding";
 
 export interface SourceLocation {
   filePath: string;
@@ -13,6 +13,7 @@ export interface SourceLocation {
     start: number;
     end: number;
   };
+  confidence?: Confidence;
 }
 
 export type CorrelationConfidence =
@@ -22,9 +23,6 @@ export type CorrelationConfidence =
   | "low"
   | "guess";
 
-/**
- * How the correlation was detected
- */
 export type CorrelationMethod =
   | "exact-match"
   | "pattern-match"
@@ -33,9 +31,7 @@ export type CorrelationMethod =
   | "filename-match"
   | "content-search"
   | "heuristic";
-/**
- * Single correlation between runtime finding and source
- */
+
 export interface SourceCorrelation {
   id: string;
   findingId: FindingId;
@@ -47,14 +43,9 @@ export interface SourceCorrelation {
   resourceUrl?: string;
 }
 
-/**
- * Grouped correlations for a finding
- */
 export interface FindingCorrelations {
-  /** Finding ID */
   findingId: FindingId;
 
-  /** Finding category */
   category: FindingCategory;
   correlations: SourceCorrelation[];
   primaryCorrelation?: SourceCorrelation;
@@ -92,9 +83,6 @@ export interface CorrelationResult {
   correlationRate: number;
 }
 
-/**
- * Search pattern for source correlation
- */
 export interface CorrelationPattern {
   type: "url" | "path" | "filename" | "content" | "import" | "component";
   pattern: string | RegExp;
@@ -121,9 +109,6 @@ export const DEFAULT_EXCLUDE_DIRS: string[] = [
   ".astro",
 ];
 
-/**
- * Default file extensions for source scanning
- */
 export const DEFAULT_SOURCE_EXTENSIONS: string[] = [
   // JavaScript/TypeScript
   ".ts",

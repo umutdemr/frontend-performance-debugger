@@ -33,7 +33,7 @@ The goal is simple:
 FPD is also available as an npm package:
 
 ```bash
-npm install  @umutdev/fpd-cli
+npm install @umutdev/fpd-cli
 ```
 
 ---
@@ -52,11 +52,11 @@ FPD is built for that gap.
 
 Instead of only saying:
 
-> “Your LCP is poor”
+> "Your LCP is poor"
 
 FPD is intended to help you get closer to:
 
-> “Your LCP is poor, large assets and render-blocking resources are likely involved, and these files are probably related.”
+> "Your LCP is poor, large assets and render-blocking resources are likely involved, and these files are probably related."
 
 ---
 
@@ -197,6 +197,12 @@ Current categories:
 - Architecture
 - SEO/Security
 
+The score accounts for:
+
+- **Critical penalty** — extra deduction for critical severity findings
+- **Collapse penalty** — extra deduction when a category scores near 0
+- **Environment adjustment** — reduced penalty for findings that are unreliable in the current environment
+
 This makes the score useful for diagnosis, not only reporting.
 
 ### Root Cause Extraction
@@ -242,6 +248,43 @@ Supported and commonly detected examples include:
 - Astro
 - Vite
 - App Router / Pages Router route detection
+
+### Environment-Aware Analysis
+
+FPD automatically detects the analysis environment and adjusts findings accordingly.
+
+- **Local Development** (`localhost`, `127.0.0.1`, `::1`)
+  - Cache findings are downgraded — headers rarely reflect production behavior
+  - HTTP on localhost is noted, not flagged as critical
+  - Common dev ports (3000, 4200, 5173, 8080...) are not reported as issues
+  - Network timings are noted as potentially unrepresentative
+
+- **Preview Environments** (_.vercel.app, _.netlify.app, \*.pages.dev, etc.)
+  - Cache findings have reduced confidence
+  - Some optimizations may differ from production
+
+- **Production Environments** (public domains with production signals)
+  - Full severity for all findings
+  - Cache headers are trusted
+  - All findings reported at face value
+
+Findings affected by environment are tagged with a caveat note explaining the limitation. Severity may be reduced when the finding is unlikely to reflect production reality.
+
+Use `--skip-env-adjustments` to disable this behavior for strict audits or CI pipelines.
+
+### Ownership Hints
+
+Each finding is tagged with who is responsible for addressing it.
+
+| Tag           | Meaning                                            |
+| ------------- | -------------------------------------------------- |
+| `[app]`       | Application code — your components, routes, assets |
+| `[framework]` | Framework-managed — Next.js, Nuxt, Vite internals  |
+| `[config]`    | Build or framework configuration                   |
+| `[infra]`     | Server, CDN, or hosting configuration              |
+| `[3rd-party]` | External services — analytics, fonts, embeds       |
+
+This makes it clearer who should act on a finding, reducing triage time.
 
 ### Multiple Output Formats
 
@@ -321,8 +364,6 @@ fpd analyze http://localhost:3000 --project C:\Users\UMUT\Desktop\my-project --v
 
 Analyze a local project or source directory without running a runtime browser session.
 
-This is useful when you want a local inspection workflow focused on code and static patterns.
-
 #### Scan current project
 
 ```bash
@@ -354,6 +395,23 @@ List the currently available analyzers and the checks they perform.
 ```bash
 fpd analyzers
 ```
+
+---
+
+## Command Options
+
+### `fpd analyze` Options
+
+| Flag                     | Alias | Description                                                        |
+| ------------------------ | ----- | ------------------------------------------------------------------ |
+| `--format`               | `-f`  | Output format: `terminal` (default), `json`, or `markdown`         |
+| `--output`               | `-o`  | Write report to a file instead of stdout                           |
+| `--project`              | `-p`  | Local project path for source code correlation                     |
+| `--open`                 |       | Start local viewer after analysis                                  |
+| `--verbose`              | `-v`  | Show detailed logs during analysis                                 |
+| `--skip-env-adjustments` |       | Disable environment-aware severity adjustments                     |
+| `--force-env <type>`     |       | Force environment: `local-dev`, `preview`, `staging`, `production` |
+| `--no-score-breakdown`   |       | Omit detailed score breakdown from report                          |
 
 ---
 
@@ -389,6 +447,24 @@ fpd analyze http://localhost:3000 --project . --verbose
 fpd analyze http://localhost:5173 --project . --verbose
 ```
 
+#### Strict audit mode (no environment adjustments)
+
+```bash
+fpd analyze https://github.com --skip-env-adjustments
+```
+
+#### Force staging environment for local server
+
+```bash
+fpd analyze http://localhost:3000 --force-env staging
+```
+
+#### Open local report viewer
+
+```bash
+fpd analyze http://localhost:3000 --project . --open
+```
+
 #### Static project scan
 
 ```bash
@@ -410,58 +486,69 @@ A typical terminal report includes:
 - analyzed URL
 - timestamp
 - analysis duration
+- detected environment
 - detected framework
 - detected route source
 - source correlation summary
-- score
-- category score breakdown
+- score with category breakdown
 - top root causes
 - severity summary
-- structured findings
+- structured findings with ownership hints and confidence levels
 - file and line hints where available
 
 ### Example
 
 ```text
-Framework: React + Next.js (App Router)
+URL:       http://localhost:3000
+Env:       [LOCAL DEV] (cache headers may not reflect production)
+Framework: Next.js
 Route:     src/app/page.js
-Correlated: 12 source locations found (40% match rate)
+Correlated: 10 source locations found (25% match rate)
 
-Score: 41/100
-  ├─ Performance:  35/40
-  ├─ Network:      0/25
-  ├─ Architecture: 19/20
-  └─ SEO/Security: 0/15
+Score: 92/100
+  ├─ Performance:  38/40
+  ├─ Network:      17/25
+  ├─ Architecture: 20/20
+  └─ SEO/Security: 15/15
+
+[CRITICAL] Total page size is very large [app]
+[WARNING]  17 images missing explicit dimensions [framework]
+[INFO]     Site using HTTP (local development) [infra]
+           ⚠ HTTP is acceptable for local development
 ```
-
-When source correlation is enabled, findings can also include likely file-level references and contextual snippets.
 
 ---
 
 ## Feature Summary
 
-| Capability                           | Status |
-| ------------------------------------ | ------ |
-| Live URL analysis                    | ✅     |
-| Real browser analysis via Playwright | ✅     |
-| Performance findings                 | ✅     |
-| Network findings                     | ✅     |
-| Asset findings                       | ✅     |
-| Cache findings                       | ✅     |
-| Render-blocking detection            | ✅     |
-| Security / SEO checks                | ✅     |
-| Score generation                     | ✅     |
-| Score breakdown                      | ✅     |
-| Root cause extraction                | ✅     |
-| Framework detection                  | ✅     |
-| Route detection                      | ✅     |
-| Route-to-source mapping              | ✅     |
-| Source correlation                   | ✅     |
-| Local project scan                   | ✅     |
-| Localhost analysis                   | ✅     |
-| Terminal output                      | ✅     |
-| JSON output                          | ✅     |
-| Markdown output                      | ✅     |
+| Capability                            | Status |
+| ------------------------------------- | ------ |
+| Live URL analysis                     | ✅     |
+| Real browser analysis via Playwright  | ✅     |
+| Performance findings                  | ✅     |
+| Network findings                      | ✅     |
+| Asset findings                        | ✅     |
+| Cache findings                        | ✅     |
+| Render-blocking detection             | ✅     |
+| Security / SEO checks                 | ✅     |
+| Score generation                      | ✅     |
+| Score breakdown                       | ✅     |
+| Critical and collapse score penalties | ✅     |
+| Root cause extraction                 | ✅     |
+| Framework detection                   | ✅     |
+| Route detection                       | ✅     |
+| Route-to-source mapping               | ✅     |
+| Source correlation                    | ✅     |
+| Local project scan                    | ✅     |
+| Localhost analysis                    | ✅     |
+| Environment-aware analysis            | ✅     |
+| Ownership hints per finding           | ✅     |
+| Confidence levels per finding         | ✅     |
+| Environment caveats in findings       | ✅     |
+| Terminal output                       | ✅     |
+| JSON output                           | ✅     |
+| Markdown output                       | ✅     |
+| Local report viewer                   | ✅     |
 
 ---
 
@@ -473,12 +560,14 @@ FPD currently includes:
 - multiple analyzer modules
 - finding aggregation and deduplication
 - finding enrichment with confidence and priority
-- category-based scoring
+- category-based scoring with critical and collapse penalties
 - root cause extraction
 - framework detection
 - route detection
 - source code correlation
 - local project scanning
+- environment-aware analysis with automatic severity adjustments
+- ownership hints for each finding
 - terminal, JSON, and Markdown output
 - published npm CLI package
 

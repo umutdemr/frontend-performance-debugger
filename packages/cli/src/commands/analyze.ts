@@ -24,6 +24,32 @@ export interface AnalyzeCommandOptions {
   verbose?: boolean;
   project?: string;
   open?: boolean;
+
+  // ============================================
+  // Phase 1: Environment-Aware Options
+  // ============================================
+
+  /**
+   * Skip environment-based severity adjustments.
+   * When enabled, all findings retain their original severity
+   * regardless of whether the analysis ran in local dev, preview, etc.
+   * Useful for strict audits or CI pipelines.
+   */
+  skipEnvAdjustments?: boolean;
+
+  /**
+   * Include detailed score breakdown in the report.
+   * Shows base score, deductions, critical penalties,
+   * collapse penalties, and environment adjustments.
+   */
+  includeScoreBreakdown?: boolean;
+
+  /**
+   * Force a specific environment type for analysis.
+   * Overrides auto-detection. Useful for testing.
+   * Values: "local-dev" | "preview" | "staging" | "production"
+   */
+  forceEnvironment?: string;
 }
 
 const ANALYZERS = [
@@ -50,6 +76,17 @@ const BROWSER_COMMANDS: Record<string, (url: string) => string> = {
     `xdg-open "${url}" 2>/dev/null || sensible-browser "${url}" 2>/dev/null || echo "Open ${url} in your browser"`,
 };
 
+/**
+ * Valid environment types for --force-environment flag
+ */
+const VALID_ENVIRONMENTS = [
+  "local-dev",
+  "preview",
+  "staging",
+  "production",
+] as const;
+type ValidEnvironment = (typeof VALID_ENVIRONMENTS)[number];
+
 export async function analyzeCommand(
   url: string,
   options: AnalyzeCommandOptions = {},
@@ -59,6 +96,9 @@ export async function analyzeCommand(
     verbose = false,
     project,
     open = false,
+    skipEnvAdjustments = false,
+    includeScoreBreakdown = true,
+    forceEnvironment,
   } = options;
 
   if (!url) {
@@ -66,22 +106,49 @@ export async function analyzeCommand(
     process.exit(1);
   }
 
+  // Validate --force-environment if provided
+  if (forceEnvironment && !isValidEnvironment(forceEnvironment)) {
+    console.error(
+      `Error: Invalid environment "${forceEnvironment}"\n` +
+        `Valid values: ${VALID_ENVIRONMENTS.join(", ")}`,
+    );
+    process.exit(1);
+  }
+
   const normalizedUrl = normalizeUrl(url);
 
   if (verbose) {
     console.log(`Analyzing: ${normalizedUrl}\n`);
-    if (project)
+    if (project) {
       console.log(
         `Project root: ${project}\nSource correlation mode enabled\n`,
       );
+    }
+    if (skipEnvAdjustments) {
+      console.log("Environment adjustments: DISABLED (strict mode)\n");
+    }
+    if (forceEnvironment) {
+      console.log(`Forced environment: ${forceEnvironment}\n`);
+    }
   }
 
   try {
-    const engine = createEngine({ verbose });
+    // Build engine config with Phase 1 options
+    const engineConfig = buildEngineConfig({
+      verbose,
+      skipEnvAdjustments,
+      forceEnvironment: forceEnvironment as ValidEnvironment | undefined,
+    });
+
+    const engine = createEngine(engineConfig);
 
     ANALYZERS.forEach((Analyzer) => engine.addAnalyzer(new Analyzer()));
 
-    let report: Report = await engine.analyze(normalizedUrl);
+    let report: Report = await engine.analyze(normalizedUrl, {
+      skipEnvironmentAdjustments: skipEnvAdjustments,
+      includeScoreBreakdown,
+      includeEnvironment: true,
+    });
 
     if (project) {
       report = await runCorrelation(report, normalizedUrl, project, verbose);
@@ -106,6 +173,49 @@ export async function analyzeCommand(
     );
     process.exit(1);
   }
+}
+
+/**
+ * Build engine configuration with Phase 1 options
+ */
+function buildEngineConfig(options: {
+  verbose: boolean;
+  skipEnvAdjustments: boolean;
+  forceEnvironment?: ValidEnvironment;
+}): Parameters<typeof createEngine>[0] {
+  const config: Parameters<typeof createEngine>[0] = {
+    verbose: options.verbose,
+    skipEnvironmentAdjustments: options.skipEnvAdjustments,
+  };
+
+  // Build forced environment context if specified
+  if (options.forceEnvironment) {
+    config.forceEnvironment = {
+      runtimeEnvironment: options.forceEnvironment,
+      hostType:
+        options.forceEnvironment === "local-dev" ? "localhost" : "public",
+      hostname: "",
+      isHttps: options.forceEnvironment !== "local-dev",
+      isLocalDev: options.forceEnvironment === "local-dev",
+      isNonStandardPort: false,
+      cacheHeadersReliable: options.forceEnvironment === "production",
+      cdnLikelyPresent: options.forceEnvironment === "production",
+      productionLikeBuild:
+        options.forceEnvironment === "production" ||
+        options.forceEnvironment === "staging",
+      detectionConfidence: "high",
+      analysisNotes: [`Environment forced to: ${options.forceEnvironment}`],
+    };
+  }
+
+  return config;
+}
+
+/**
+ * Validate environment string
+ */
+function isValidEnvironment(env: string): env is ValidEnvironment {
+  return VALID_ENVIRONMENTS.includes(env as ValidEnvironment);
 }
 
 async function runCorrelation(

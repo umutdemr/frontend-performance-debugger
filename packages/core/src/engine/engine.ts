@@ -1,4 +1,13 @@
-import type { Report, Metrics, Category, Severity } from "@fpd/shared-types";
+import type {
+  Report,
+  Metrics,
+  Category,
+  Severity,
+  Finding,
+  EnvironmentContext,
+  FindingsSummary,
+} from "@fpd/shared-types";
+import { DEFAULT_ENVIRONMENT_CONTEXT } from "@fpd/shared-types";
 import type {
   Analyzer,
   AnalyzerContext,
@@ -8,34 +17,28 @@ import { createReport } from "../report/reporter.js";
 import type { PageMetrics } from "../browser/playwright-client.js";
 import { dedupeFindings } from "../post-process/dedupe.js";
 import { aggregateFindings } from "../post-process/aggregate-findings.js";
-import { assignPriority, assignConfidence } from "../post-process/enrich.js";
+import { enrichFindings } from "../post-process/enrich.js";
+import { detectEnvironment } from "./environment-detector.js";
+import { calculateFinalScore } from "../scoring/scoring.engine.js";
+import { extractRootCauses } from "../post-process/root-causes.js";
 
 export interface EngineConfig {
-  /** Analyzers to run */
   analyzers?: Analyzer[];
-
-  /** Enable verbose logging */
   verbose?: boolean;
-
-  /** Analysis timeout (ms) */
   timeout?: number;
+  skipEnvironmentAdjustments?: boolean;
+  forceEnvironment?: EnvironmentContext;
 }
 
 export interface AnalyzeOptions {
-  /** Filter by categories */
   categories?: Category[];
-
-  /** Minimum severity to include */
   minSeverity?: Severity;
-
-  /** Local scan path (for file system analyzer) */
   scanPath?: string;
+  skipEnvironmentAdjustments?: boolean;
+  includeScoreBreakdown?: boolean;
+  includeEnvironment?: boolean;
 }
 
-/**
- * Core analysis engine
- * Orchestrates analyzers and produces reports
- */
 export class Engine {
   private analyzers: Analyzer[] = [];
   private config: EngineConfig;
@@ -57,33 +60,15 @@ export class Engine {
     return this.analyzers;
   }
 
-  /**
-   * Run analysis on a URL
-   * @param url - URL to analyze
-   * @param options - Analysis options
-   * @returns Complete analysis report
-   */
   async analyze(url: string, options: AnalyzeOptions = {}): Promise<Report> {
     const startTime = Date.now();
 
-    // Skip URL validation for local scans
     if (url !== "local-scan") {
       this.validateUrl(url);
     }
 
-    // Create context for analyzers
-    const context: AnalyzerContext = {
-      url,
-      options: {
-        verbose: this.config.verbose,
-        timeout: this.config.timeout,
-        ...options,
-      },
-    };
-
     let pageMetrics: PageMetrics | null = null;
 
-    // Playwright integration (skip for local scans)
     if (url !== "local-scan") {
       try {
         const { createPlaywrightClient } =
@@ -101,7 +86,6 @@ export class Engine {
         }
 
         pageMetrics = await client.collectMetrics(url);
-        context.pageData = { metrics: pageMetrics };
 
         await client.close();
 
@@ -118,24 +102,79 @@ export class Engine {
       }
     }
 
-    // Run all analyzers
+    const environment = this.detectEnvironmentContext(url, pageMetrics);
+
+    if (this.config.verbose && environment.runtimeEnvironment !== "unknown") {
+      console.log(
+        `Environment detected: ${environment.runtimeEnvironment} (${environment.hostType})`,
+      );
+      if (environment.detectedFramework) {
+        console.log(`Framework detected: ${environment.detectedFramework}`);
+      }
+    }
+
+    const context: AnalyzerContext = {
+      url,
+      options: {
+        verbose: this.config.verbose,
+        timeout: this.config.timeout,
+        scanPath: options.scanPath,
+        skipEnvironmentAdjustments:
+          options.skipEnvironmentAdjustments ??
+          this.config.skipEnvironmentAdjustments,
+      },
+      pageData: pageMetrics ? { metrics: pageMetrics } : undefined,
+      environment,
+      resources: pageMetrics?.requests?.map((r) => ({
+        url: r.url,
+        type: r.resourceType as any,
+        size: r.size,
+        duration: r.duration,
+        status: r.status,
+        cached: r.cached,
+      })),
+    };
+
     const results = await this.runAnalyzers(context, options);
 
-    // Collect all raw findings
     let allFindings = results.flatMap((r) => r.findings);
 
-    allFindings = dedupeFindings(allFindings);
-    allFindings = aggregateFindings(allFindings);
-    allFindings = allFindings.map(assignPriority).map(assignConfidence);
+    allFindings = this.postProcessFindings(allFindings, environment);
 
-    // Calculate duration
     const duration = Date.now() - startTime;
 
-    // Convert PageMetrics to Metrics format
     const metrics: Metrics = this.convertToMetrics(pageMetrics);
 
-    // Create and return report
-    return createReport({
+    const analysisMode =
+      url === "local-scan" || options.scanPath ? "filesystem" : "runtime";
+
+    const scoreResult = calculateFinalScore(
+      allFindings,
+      {
+        applyEnvironmentAdjustments: !options.skipEnvironmentAdjustments,
+        includeExplanation: options.includeScoreBreakdown ?? true,
+        analysisMode,
+      },
+      environment,
+    );
+
+    const findingsSummary = this.buildFindingsSummary(allFindings);
+
+    // Build framework info
+    const frameworkInfo = environment.detectedFramework
+      ? {
+          name: environment.detectedFramework,
+          version: environment.frameworkVersion,
+          confidence: environment.detectionConfidence,
+        }
+      : undefined;
+
+    const rootCauses = extractRootCauses(
+      allFindings,
+      environment.detectedFramework,
+    );
+
+    const report = createReport({
       url,
       findings: allFindings,
       metrics,
@@ -144,12 +183,184 @@ export class Engine {
         minSeverity: options.minSeverity,
         categories: options.categories,
       },
+      framework: frameworkInfo,
+      environment,
+    });
+
+    return this.enhanceReport(report, {
+      environment,
+      scoreResult,
+      findingsSummary,
+      rootCauses,
+      includeEnvironment: options.includeEnvironment ?? true,
+      includeScoreBreakdown: options.includeScoreBreakdown ?? true,
     });
   }
 
-  /**
-   * Convert Playwright PageMetrics to shared-types Metrics
-   */
+  private detectEnvironmentContext(
+    url: string,
+    pageMetrics: PageMetrics | null,
+  ): EnvironmentContext {
+    if (this.config.forceEnvironment) {
+      return this.config.forceEnvironment;
+    }
+
+    if (url === "local-scan") {
+      return {
+        ...DEFAULT_ENVIRONMENT_CONTEXT,
+        runtimeEnvironment: "local-dev",
+        hostType: "localhost",
+        isLocalDev: true,
+        cacheHeadersReliable: false,
+        analysisNotes: ["Local file system scan - no network analysis"],
+      };
+    }
+
+    const resourceUrls = pageMetrics?.requests?.map((r) => r.url);
+
+    return detectEnvironment({
+      url,
+      resourceUrls,
+    });
+  }
+
+  private postProcessFindings(
+    findings: Finding[],
+    environment: EnvironmentContext,
+  ): Finding[] {
+    let processed = dedupeFindings(findings);
+    processed = aggregateFindings(processed);
+    processed = enrichFindings(processed, { environment });
+    return processed;
+  }
+
+  private buildFindingsSummary(findings: Finding[]): FindingsSummary {
+    const bySeverity: Record<string, number> = {};
+    const byCategory: Record<string, number> = {};
+    let environmentLimited = 0;
+    let downgraded = 0;
+
+    for (const finding of findings) {
+      bySeverity[finding.severity] = (bySeverity[finding.severity] || 0) + 1;
+      byCategory[finding.category] = (byCategory[finding.category] || 0) + 1;
+
+      if (finding.environmentLimited) environmentLimited++;
+      if (finding.originalSeverity) downgraded++;
+    }
+
+    return {
+      total: findings.length,
+      bySeverity,
+      byCategory,
+      environmentLimited,
+      downgraded,
+    };
+  }
+
+  private enhanceReport(
+    report: Report,
+    enhancements: {
+      environment: EnvironmentContext;
+      scoreResult: ReturnType<typeof calculateFinalScore>;
+      findingsSummary: FindingsSummary;
+      rootCauses: ReturnType<typeof extractRootCauses>;
+      includeEnvironment: boolean;
+      includeScoreBreakdown: boolean;
+    },
+  ): Report {
+    const {
+      environment,
+      scoreResult,
+      findingsSummary,
+      rootCauses,
+      includeEnvironment,
+      includeScoreBreakdown,
+    } = enhancements;
+
+    const enhancedReport: Report = {
+      ...report,
+      summary: {
+        ...report.summary,
+        score: scoreResult.finalScore,
+        breakdown: {
+          performance: `${Math.round(scoreResult.breakdown.performance.current)}/${scoreResult.breakdown.performance.max}`,
+          network: `${Math.round(scoreResult.breakdown.network.current)}/${scoreResult.breakdown.network.max}`,
+          architecture: `${Math.round(scoreResult.breakdown.architecture.current)}/${scoreResult.breakdown.architecture.max}`,
+          seoSecurity: `${Math.round(scoreResult.breakdown.seoSecurity.current)}/${scoreResult.breakdown.seoSecurity.max}`,
+        },
+        // Use inferred root causes instead of scoring engine strings
+        topRootCauses: rootCauses,
+        environmentLimited: findingsSummary.environmentLimited,
+        downgraded: findingsSummary.downgraded,
+      },
+      findingsSummary,
+    };
+
+    if (includeEnvironment) {
+      enhancedReport.environment = environment;
+    }
+
+    if (environment.detectedFramework) {
+      enhancedReport.framework = {
+        name: environment.detectedFramework,
+        version: environment.frameworkVersion,
+        confidence: environment.detectionConfidence,
+      };
+    }
+
+    enhancedReport.categoryScores = {
+      performance: {
+        score: Math.round(scoreResult.breakdown.performance.current),
+        maxScore: scoreResult.breakdown.performance.max,
+        findings: scoreResult.breakdown.performance.findingCount || 0,
+        collapsed: scoreResult.breakdown.performance.collapsed,
+        notes: scoreResult.breakdown.performance.notes,
+      },
+      network: {
+        score: Math.round(scoreResult.breakdown.network.current),
+        maxScore: scoreResult.breakdown.network.max,
+        findings: scoreResult.breakdown.network.findingCount || 0,
+        collapsed: scoreResult.breakdown.network.collapsed,
+        notes: scoreResult.breakdown.network.notes,
+      },
+      architecture: {
+        score: Math.round(scoreResult.breakdown.architecture.current),
+        maxScore: scoreResult.breakdown.architecture.max,
+        findings: scoreResult.breakdown.architecture.findingCount || 0,
+        collapsed: scoreResult.breakdown.architecture.collapsed,
+        notes: scoreResult.breakdown.architecture.notes,
+      },
+      seoSecurity: {
+        score: Math.round(scoreResult.breakdown.seoSecurity.current),
+        maxScore: scoreResult.breakdown.seoSecurity.max,
+        findings: scoreResult.breakdown.seoSecurity.findingCount || 0,
+        collapsed: scoreResult.breakdown.seoSecurity.collapsed,
+        notes: scoreResult.breakdown.seoSecurity.notes,
+      },
+    };
+
+    if (includeScoreBreakdown && scoreResult.explanation) {
+      enhancedReport.scoreBreakdown = {
+        baseScore: scoreResult.explanation.baseScore,
+        findingDeductions: scoreResult.explanation.findingDeductions,
+        criticalPenalty: scoreResult.explanation.criticalPenalty.penalty,
+        categoryCollapsePenalty:
+          scoreResult.explanation.collapsePenalty.penalty,
+        environmentAdjustment:
+          scoreResult.explanation.environmentAdjustment.penaltyReduction,
+        finalScore: scoreResult.explanation.finalScore,
+        explanation: scoreResult.explanation.explanationLines,
+      };
+    }
+
+    (enhancedReport as any).analysisMode =
+      environment.isLocalDev && !environment.cacheHeadersReliable
+        ? "filesystem"
+        : "runtime";
+
+    return enhancedReport;
+  }
+
   private convertToMetrics(pageMetrics: PageMetrics | null): Metrics {
     if (!pageMetrics) {
       return {
@@ -182,14 +393,10 @@ export class Engine {
     };
   }
 
-  /**
-   * Run all applicable analyzers
-   */
   private async runAnalyzers(
     context: AnalyzerContext,
     options: AnalyzeOptions,
   ): Promise<AnalyzerResult[]> {
-    // Filter analyzers by category if specified
     let analyzersToRun = this.analyzers;
 
     if (options.categories && options.categories.length > 0) {
@@ -198,7 +405,13 @@ export class Engine {
       );
     }
 
-    // Run analyzers in parallel
+    analyzersToRun = analyzersToRun.filter((analyzer) => {
+      if (analyzer.shouldRun) {
+        return analyzer.shouldRun(context);
+      }
+      return true;
+    });
+
     const results = await Promise.all(
       analyzersToRun.map((analyzer) =>
         this.runSingleAnalyzer(analyzer, context),
@@ -208,9 +421,6 @@ export class Engine {
     return results;
   }
 
-  /**
-   * Run a single analyzer with error handling
-   */
   private async runSingleAnalyzer(
     analyzer: Analyzer,
     context: AnalyzerContext,
@@ -218,10 +428,24 @@ export class Engine {
     const startTime = Date.now();
 
     try {
+      if (this.config.verbose) {
+        console.log(`Running analyzer: ${analyzer.name}`);
+      }
+
       const result = await analyzer.analyze(context);
+
+      if (this.config.verbose) {
+        console.log(
+          `  ${analyzer.name}: ${result.findings.length} findings in ${result.duration}ms`,
+        );
+      }
+
       return result;
     } catch (error) {
-      // Non-fatal: return empty result with error
+      if (this.config.verbose) {
+        console.warn(`  ${analyzer.name}: Failed -`, error);
+      }
+
       return {
         analyzerName: analyzer.name,
         findings: [],

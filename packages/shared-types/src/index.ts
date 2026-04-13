@@ -13,7 +13,12 @@ export { CATEGORY_LABEL, CATEGORY_DESCRIPTION } from "./category.js";
 // ===========================================
 // Evidence
 // ===========================================
-export type { Evidence, EvidenceType } from "./evidence.js";
+export type {
+  Evidence,
+  EvidenceType,
+  EvidenceGroup,
+  EvidenceSummary,
+} from "./evidence.js";
 
 // ===========================================
 // Metrics
@@ -32,6 +37,13 @@ export type {
   Priority,
   Confidence,
   AggregationMeta,
+  ActionType,
+} from "./finding.js";
+
+export {
+  createFinding,
+  isDowngraded,
+  hasEnvironmentLimitations as hasEnvironmentLimitationsOnFinding,
 } from "./finding.js";
 
 // ===========================================
@@ -42,6 +54,16 @@ export type {
   ReportSummary,
   ReportOptions,
   RootCause,
+  CategoryScore,
+  ScoreBreakdown,
+  FrameworkInfo,
+  FindingsSummary,
+} from "./report.js";
+
+export {
+  isLocalDevReport,
+  hasEnvironmentLimitations,
+  getEnvironmentWarning,
 } from "./report.js";
 
 // ===========================================
@@ -91,3 +113,37 @@ export {
   IMAGE_EXTENSIONS,
   DEFAULT_CORRELATION_OPTIONS,
 } from "./correlation.js";
+
+// ===========================================
+//  Environment Awareness
+// ===========================================
+export type {
+  RuntimeEnvironment,
+  HostType,
+  ConfidenceLevel,
+  FrameworkAssetPatterns,
+  EnvironmentContext,
+} from "./environment.js";
+
+export {
+  DEFAULT_ENVIRONMENT_CONTEXT,
+  STANDARD_PORTS,
+  COMMON_DEV_PORTS,
+  PREVIEW_DOMAIN_PATTERNS,
+  STAGING_DOMAIN_PATTERNS,
+} from "./environment.js";
+
+export type {
+  OwnershipType,
+  OwnershipCategory,
+  OwnershipHint,
+  OwnershipPattern,
+} from "./ownership.js";
+
+export {
+  UNKNOWN_OWNERSHIP,
+  COMMON_OWNERSHIP_PATTERNS,
+  categoryToType,
+  typeToCategory,
+  createOwnership,
+} from "./ownership.js";

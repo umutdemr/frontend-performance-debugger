@@ -62,6 +62,23 @@ OPTIONS
   --version
       Show CLI version.
 
+  --skip-env-adjustments
+      Disable environment-aware severity adjustments.
+      By default, FPD reduces severity and adds caveats for findings
+      that are unreliable in local dev or preview environments (e.g.,
+      cache findings in localhost). Use this flag for strict audits
+      or CI pipelines where you want unmodified severities.
+
+  --force-env <environment>
+      Force a specific environment type, overriding auto-detection.
+      Valid values: local-dev | preview | staging | production
+      Example: --force-env staging
+
+  --no-score-breakdown
+      Omit the detailed score breakdown from the report.
+      By default, FPD includes score details: base score, deductions,
+      critical penalty, and collapse penalty.
+
 COMMON WORKFLOWS
 
   Analyze a live site:
@@ -80,9 +97,55 @@ COMMON WORKFLOWS
     fpd analyze https://example.com --format json --output report.json
     fpd analyze https://example.com --format markdown --output report.md
 
+  Strict audit mode (no environment adjustments):
+    fpd analyze https://example.com --skip-env-adjustments
+
+  Force staging environment for local server:
+    fpd analyze http://localhost:3000 --force-env staging
+
   Scan a local project:
     fpd scan .
     fpd scan ./src
+
+ENVIRONMENT AWARENESS 
+
+  FPD automatically detects your environment and adjusts findings:
+
+  • localhost / 127.0.0.1    → Local Development mode
+    - Cache findings are downgraded (headers don't reflect production)
+    - HTTP on localhost is noted, not flagged as critical
+    - Common dev ports (3000, 4200, 5173...) are not reported
+    - Network timings are noted as potentially unrepresentative
+
+  • *.vercel.app, *.netlify.app, etc. → Preview mode
+    - Cache findings have reduced confidence
+    - Some optimizations may differ from production
+
+  • Public domain with production signals → Production mode
+    - Full severity for all findings
+    - Cache headers are trusted
+    - All findings reported at face value
+
+  Use --skip-env-adjustments to disable this behavior.
+
+OWNERSHIP HINTS 
+
+  Each finding is tagged with who is responsible for fixing it:
+
+  [app]         Application code (your components, routes)
+  [framework]   Framework-managed (Next.js, Nuxt, Vite internals)
+  [config]      Build or framework configuration
+  [infra]       Server, CDN, or hosting configuration
+  [3rd-party]   External services (analytics, fonts, etc.)
+
+SCORE CALIBRATION 
+
+  The overall score now accounts for:
+  • Critical penalty  — extra deduction for critical severity findings
+  • Collapse penalty  — extra deduction when a category scores near 0
+  • Env. adjustment   — reduced penalty for environment-limited findings
+
+  Run with --verbose to see score adjustment details in the report.
 
 NOTES
   - Use --project with "analyze" to enable framework-aware mapping.
@@ -90,6 +153,7 @@ NOTES
   - Localhost URLs (e.g., http://localhost:3000) are fully supported.
   - If no protocol is provided, FPD defaults to https:// (or http:// for localhost).
   - Source correlation is currently optimized for React and Next.js projects.
+  - Environment awareness works automatically with no configuration needed.
 
 MORE INFO
   Documentation & Repository:
@@ -117,6 +181,9 @@ function parseArgs(args: string[]): {
   verbose: boolean;
   help: boolean;
   version: boolean;
+  skipEnvAdjustments: boolean;
+  forceEnvironment?: string;
+  includeScoreBreakdown: boolean;
 } {
   const result = {
     command: undefined as string | undefined,
@@ -128,6 +195,9 @@ function parseArgs(args: string[]): {
     verbose: false,
     help: false,
     version: false,
+    skipEnvAdjustments: false,
+    forceEnvironment: undefined as string | undefined,
+    includeScoreBreakdown: true,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -177,6 +247,21 @@ function parseArgs(args: string[]): {
         }
         break;
 
+      case "--skip-env-adjustments":
+        result.skipEnvAdjustments = true;
+        break;
+
+      case "--force-env":
+        if (nextArg && !nextArg.startsWith("-")) {
+          result.forceEnvironment = nextArg;
+          i++;
+        }
+        break;
+
+      case "--no-score-breakdown":
+        result.includeScoreBreakdown = false;
+        break;
+
       default:
         if (!arg.startsWith("-")) {
           if (!result.command) {
@@ -221,6 +306,9 @@ async function main(): Promise<void> {
       project: parsed.project,
       open: parsed.open,
       verbose: parsed.verbose,
+      skipEnvAdjustments: parsed.skipEnvAdjustments,
+      forceEnvironment: parsed.forceEnvironment,
+      includeScoreBreakdown: parsed.includeScoreBreakdown,
     });
     return;
   }

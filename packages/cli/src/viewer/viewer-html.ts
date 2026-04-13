@@ -1,9 +1,12 @@
-import type { Report, Finding, RootCause } from "@fpd/shared-types";
+import type {
+  Report,
+  Finding,
+  RootCause,
+  EnvironmentContext,
+  CategoryScore,
+} from "@fpd/shared-types";
 import { getViewerStyles } from "./viewer-styles";
 
-/**
- * Generate a polished, self-contained HTML report viewer
- */
 export function generateReportHTML(report: Report): string {
   const reportJson = JSON.stringify(report)
     .replace(/</g, "\\u003c")
@@ -21,6 +24,15 @@ export function generateReportHTML(report: Report): string {
     0,
     Math.min(360, Math.round((score / 100) * 360)),
   );
+
+  const envLabel = report.environment
+    ? formatEnvironmentLabel(report.environment)
+    : null;
+  const envClass = report.environment?.isLocalDev
+    ? "meta-chip-warning"
+    : report.environment?.runtimeEnvironment === "production"
+      ? "meta-chip-success"
+      : "meta-chip-info";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -47,19 +59,58 @@ export function generateReportHTML(report: Report): string {
         </div>
 
         <div class="header-meta">
+          ${
+            envLabel
+              ? `
+          <div class="meta-chip ${envClass}">
+            <span class="meta-chip-label">Environment</span>
+            <span class="meta-chip-value">${escapeHtml(envLabel)}</span>
+          </div>
+          `
+              : ""
+          }
+          ${
+            report.framework
+              ? `
+          <div class="meta-chip">
+            <span class="meta-chip-label">Framework</span>
+            <span class="meta-chip-value">${escapeHtml(formatFrameworkLabel(report.framework))}</span>
+          </div>
+          `
+              : ""
+          }
           <div class="meta-chip">
             <span class="meta-chip-label">Generated</span>
             <span class="meta-chip-value">${escapeHtml(analyzedAt)}</span>
-          </div>
-          <div class="meta-chip">
-            <span class="meta-chip-label">Framework</span>
-            <span class="meta-chip-value">${escapeHtml(detectFrameworkLabel(report))}</span>
           </div>
         </div>
       </div>
     </header>
 
     <main class="container page-content">
+      ${
+        report.environment?.isLocalDev
+          ? `
+      <div class="env-banner">
+        <span class="env-banner-icon">⚠</span>
+        <span class="env-banner-text">
+          <strong>Local Development Analysis</strong> — Some findings may not reflect production behavior. 
+          Cache and header-based findings have reduced confidence.
+        </span>
+      </div>
+      `
+          : report.environment?.runtimeEnvironment === "preview"
+            ? `
+      <div class="env-banner">
+        <span class="env-banner-icon">👁️</span>
+        <span class="env-banner-text">
+          <strong>Preview Environment Analysis</strong> — Some optimizations may differ from production.
+        </span>
+      </div>
+      `
+            : ""
+      }
+
       <section class="hero card glass-card">
         <div class="hero-main">
           <div class="hero-score ${getScoreClass(score)}">
@@ -106,10 +157,12 @@ export function generateReportHTML(report: Report): string {
             ${renderKV("URL", report.url)}
             ${renderKV("Analyzed", analyzedAt)}
             ${renderKV("Duration", formatDuration(report.duration))}
-            ${renderKV("Headline", report.summary.headline || "—")}
-            ${report.correlationResult ? renderKV("Framework", detectFrameworkLabel(report)) : ""}
+            ${report.environment ? renderKV("Environment", formatEnvironmentLabel(report.environment)) : ""}
+            ${report.framework ? renderKV("Framework", formatFrameworkLabel(report.framework)) : ""}
             ${report.correlationResult?.routeMaps?.[0] ? renderKV("Route", report.correlationResult.routeMaps[0].pageFile) : ""}
             ${renderKV("Findings", String(findings.length))}
+            ${report.findingsSummary?.environmentLimited ? renderKV("Env-Limited", `${report.findingsSummary.environmentLimited} findings`) : ""}
+            ${report.findingsSummary?.downgraded ? renderKV("Downgraded", `${report.findingsSummary.downgraded} findings`) : ""}
           </div>
         </div>
 
@@ -122,16 +175,35 @@ export function generateReportHTML(report: Report): string {
           </div>
 
           ${
-            report.summary.breakdown
+            report.categoryScores
               ? `
             <div class="breakdown-stack">
-              ${renderBreakdownBar("Performance", report.summary.breakdown.performance)}
-              ${renderBreakdownBar("Network", report.summary.breakdown.network)}
-              ${renderBreakdownBar("Architecture", report.summary.breakdown.architecture)}
-              ${renderBreakdownBar("SEO / Security", report.summary.breakdown.seoSecurity)}
+              ${renderBreakdownBar("Performance", report.summary.breakdown?.performance ?? `${report.categoryScores.performance?.score ?? 0}/${report.categoryScores.performance?.maxScore ?? 0}`, report.categoryScores.performance)}
+              ${renderBreakdownBar("Network", report.summary.breakdown?.network ?? `${report.categoryScores.network?.score ?? 0}/${report.categoryScores.network?.maxScore ?? 0}`, report.categoryScores.network)}
+              ${renderBreakdownBar("Architecture", report.summary.breakdown?.architecture ?? `${report.categoryScores.architecture?.score ?? 0}/${report.categoryScores.architecture?.maxScore ?? 0}`, report.categoryScores.architecture)}
+              ${renderBreakdownBar("SEO / Security", report.summary.breakdown?.seoSecurity ?? `${report.categoryScores.seoSecurity?.score ?? 0}/${report.categoryScores.seoSecurity?.maxScore ?? 0}`, report.categoryScores.seoSecurity)}
             </div>
           `
               : `<div class="empty-state compact">No score breakdown available.</div>`
+          }
+
+          ${
+            report.scoreBreakdown
+              ? `
+            <div class="score-breakdown-details">
+              <h3 class="breakdown-details-title">Score Calculation</h3>
+              <div class="breakdown-details-list">
+                ${renderScoreBreakdownItem("Base Score", report.scoreBreakdown.baseScore)}
+                ${renderScoreBreakdownItem("Finding Deductions", -report.scoreBreakdown.findingDeductions, true)}
+                ${report.scoreBreakdown.criticalPenalty > 0 ? renderScoreBreakdownItem("Critical Penalty", -report.scoreBreakdown.criticalPenalty, true) : ""}
+                ${report.scoreBreakdown.categoryCollapsePenalty > 0 ? renderScoreBreakdownItem("Collapse Penalty", -report.scoreBreakdown.categoryCollapsePenalty, true) : ""}
+                ${report.scoreBreakdown.environmentAdjustment > 0 ? renderScoreBreakdownItem("Environment Adjustment", report.scoreBreakdown.environmentAdjustment, false, "positive") : ""}
+                <div class="breakdown-details-divider"></div>
+                ${renderScoreBreakdownItem("Final Score", report.scoreBreakdown.finalScore, false, "final")}
+              </div>
+            </div>
+          `
+              : ""
           }
         </div>
       </section>
@@ -151,6 +223,35 @@ export function generateReportHTML(report: Report): string {
             ${renderSeverityBadge("Info", report.summary.bySeverity.info, "info")}
             ${renderSeverityBadge("Success", report.summary.bySeverity.success, "success")}
           </div>
+
+          ${
+            report.findingsSummary
+              ? `
+          <div class="findings-summary-note">
+            ${
+              report.findingsSummary.environmentLimited > 0
+                ? `
+              <div class="summary-note-item">
+                <span class="summary-note-icon">⚠</span>
+                <span>${report.findingsSummary.environmentLimited} findings have reduced confidence</span>
+              </div>
+            `
+                : ""
+            }
+            ${
+              report.findingsSummary.downgraded > 0
+                ? `
+              <div class="summary-note-item">
+                <span class="summary-note-icon">↓</span>
+                <span>${report.findingsSummary.downgraded} findings were downgraded</span>
+              </div>
+            `
+                : ""
+            }
+          </div>
+          `
+              : ""
+          }
         </div>
 
         <div class="card col-8">
@@ -197,12 +298,18 @@ export function generateReportHTML(report: Report): string {
                 const finding = findings.find((f) => f.id === fc.findingId);
                 if (!finding) return "";
 
+                const ownershipBadge =
+                  finding.ownership && finding.ownership.type !== "unknown"
+                    ? `<span class="ownership-badge ownership-${escapeAttr(finding.ownership.type)}">${escapeHtml(formatOwnershipLabel(finding.ownership.type))}</span>`
+                    : "";
+
                 return `
                   <article class="correlation-item">
                     <div class="correlation-header">
                       <div class="correlation-header-main">
                         <span class="badge badge-${escapeAttr(finding.severity)}">${escapeHtml(finding.severity.toUpperCase())}</span>
                         <h3 class="correlation-title">${escapeHtml(finding.title)}</h3>
+                        ${ownershipBadge}
                       </div>
                       <span class="muted">${fc.totalLocations} location${fc.totalLocations > 1 ? "s" : ""}</span>
                     </div>
@@ -215,9 +322,7 @@ export function generateReportHTML(report: Report): string {
                         <div class="location-card">
                           <div class="location-topline">
                             <code class="code-path">${escapeHtml(c.location.filePath)}${c.location.lineNumber ? `:${c.location.lineNumber}` : ""}</code>
-                            <span class="confidence-badge confidence-${escapeAttr(normalizeConfidence(c.confidence))}">
-                              ${escapeHtml(String(c.confidence))}
-                            </span>
+                            <span class="confidence-badge confidence-${escapeAttr(normalizeConfidence(c.confidence))}">${escapeHtml(String(c.confidence))}</span>
                             <button
                               type="button"
                               class="icon-btn copy-btn"
@@ -317,6 +422,34 @@ export function generateReportHTML(report: Report): string {
           No findings match the current search and filter criteria.
         </div>
       </section>
+
+      ${
+        report.environment?.analysisNotes &&
+        report.environment.analysisNotes.length > 0
+          ? `
+      <section class="card section-gap">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Context</p>
+            <h2 class="section-title">Analysis Notes</h2>
+          </div>
+        </div>
+        <div class="analysis-notes-list">
+          ${report.environment.analysisNotes
+            .map(
+              (note) => `
+            <div class="analysis-note-item">
+              <span class="analysis-note-icon">•</span>
+              <span class="analysis-note-text">${escapeHtml(note)}</span>
+            </div>
+          `,
+            )
+            .join("")}
+        </div>
+      </section>
+      `
+          : ""
+      }
     </main>
 
     <footer class="shell-footer">
@@ -458,7 +591,11 @@ function renderKV(key: string, value: string): string {
   `;
 }
 
-function renderBreakdownBar(label: string, value: string): string {
+function renderBreakdownBar(
+  label: string,
+  value: string,
+  categoryScore?: CategoryScore,
+): string {
   const parts = String(value).split("/");
   const current = Number(parts[0]?.trim() ?? 0);
   const max = Number(parts[1]?.trim() ?? 0);
@@ -467,16 +604,43 @@ function renderBreakdownBar(label: string, value: string): string {
   const barClass =
     percent >= 80 ? "bar-good" : percent >= 50 ? "bar-ok" : "bar-bad";
 
+  const collapsedIndicator = categoryScore?.collapsed
+    ? '<span class="breakdown-collapsed">[SEVERELY IMPACTED]</span>'
+    : "";
+
   return `
     <div class="breakdown-item">
       <div class="breakdown-header">
-        <span class="breakdown-label">${escapeHtml(label)}</span>
+        <span class="breakdown-label">${escapeHtml(label)}${collapsedIndicator}</span>
         <span class="breakdown-value">${escapeHtml(value)}</span>
       </div>
       <div class="bar-track" aria-hidden="true">
         <div class="bar-fill ${barClass}" style="width:${percent}%"></div>
       </div>
       <div class="breakdown-caption">${percent}% completion</div>
+    </div>
+  `;
+}
+
+function renderScoreBreakdownItem(
+  label: string,
+  value: number,
+  isNegative = false,
+  type = "normal",
+): string {
+  const valueClass = isNegative
+    ? "value-negative"
+    : type === "positive"
+      ? "value-positive"
+      : type === "final"
+        ? "value-final"
+        : "";
+  const valueDisplay = isNegative ? `-${Math.abs(value)}` : String(value);
+
+  return `
+    <div class="breakdown-details-item">
+      <span class="breakdown-details-label">${escapeHtml(label)}</span>
+      <span class="breakdown-details-value ${valueClass}">${escapeHtml(valueDisplay)}</span>
     </div>
   `;
 }
@@ -527,6 +691,8 @@ function renderFinding(
     finding.impact,
     finding.recommendation,
     finding.priority,
+    finding.actionType ?? "",
+    finding.ownership?.type ?? "",
     evidence
       .slice(0, 8)
       .map(
@@ -542,9 +708,31 @@ function renderFinding(
   const buttonId = `finding-trigger-${index}`;
   const initialExpanded = index < 3;
 
+  const ownershipBadge =
+    finding.ownership && finding.ownership.type !== "unknown"
+      ? `<span class="ownership-badge ownership-${escapeAttr(finding.ownership.type)}">${escapeHtml(formatOwnershipLabel(finding.ownership.type))}</span>`
+      : "";
+
+  const actionBadge =
+    finding.priority && finding.priority !== "none"
+      ? `<span class="action-badge priority-${escapeAttr(finding.priority)}">${escapeHtml(formatPriorityLabel(finding.priority))}</span>`
+      : "";
+
+  const downgradedIndicator = finding.originalSeverity
+    ? `<span class="downgraded-badge" title="Downgraded from ${finding.originalSeverity} due to environment">↓ ${escapeHtml(finding.originalSeverity.toUpperCase())}</span>`
+    : "";
+
+  const envNote =
+    finding.environmentLimited &&
+    finding.environmentNotes &&
+    finding.environmentNotes.length > 0 &&
+    finding.environmentNotes[0]
+      ? finding.environmentNotes[0]
+      : null;
+
   return `
     <article
-      class="finding-card"
+      class="finding-card ${finding.environmentLimited ? "env-limited" : ""}"
       data-severity="${escapeAttr(finding.severity)}"
       data-priority="${escapeAttr(finding.priority || "none")}"
       data-title="${escapeAttr(finding.title)}"
@@ -560,14 +748,18 @@ function renderFinding(
       >
         <span class="finding-header-left">
           <span class="badge badge-${escapeAttr(finding.severity)}">${escapeHtml(finding.severity.toUpperCase())}</span>
+          ${downgradedIndicator}
           <span class="finding-heading-block">
             <span class="finding-title">${escapeHtml(finding.title)}</span>
             <span class="finding-meta">
               ${escapeHtml(finding.category)} · ${escapeHtml(finding.id)}
-              ${finding.confidence ? ` · confidence: ${escapeHtml(String(finding.confidence))}` : ""}
+              ${finding.confidence ? ` · conf: ${escapeHtml(String(finding.confidence))}` : ""}
             </span>
           </span>
-          ${finding.priority && finding.priority !== "none" ? `<span class="priority-tag">${escapeHtml(String(finding.priority))}</span>` : ""}
+          <span class="finding-badges">
+            ${ownershipBadge}
+            ${actionBadge}
+          </span>
         </span>
         <span class="toggle-icon" aria-hidden="true">⌄</span>
       </button>
@@ -581,6 +773,17 @@ function renderFinding(
       >
         <div class="finding-section">
           <p class="finding-description">${escapeHtml(finding.description)}</p>
+          
+          ${
+            envNote
+              ? `
+            <div class="env-note-box">
+              <span class="env-note-icon">⚠</span>
+              <span class="env-note-text">${escapeHtml(envNote)}</span>
+            </div>
+          `
+              : ""
+          }
         </div>
 
         ${
@@ -595,11 +798,20 @@ function renderFinding(
                   (e) => `
                 <div class="evidence-item">
                   <span class="evidence-label">${escapeHtml(e.label)}</span>
-                  <code class="evidence-code">${escapeHtml(typeof e.data === "object" ? JSON.stringify(e.data) : String(e.data))}</code>
+                  <code class="evidence-code">${escapeHtml(formatEvidenceDataHtml(e.data))}</code>
                 </div>
               `,
                 )
                 .join("")}
+              ${
+                finding.evidenceSummary && finding.evidenceSummary.truncated
+                  ? `
+                <div class="evidence-truncated">
+                  ... and ${finding.evidenceSummary.totalCount - finding.evidenceSummary.uniqueCount} more similar items
+                </div>
+              `
+                  : ""
+              }
             </div>
           </div>
         `
@@ -634,6 +846,11 @@ function renderFinding(
               `,
                 )
                 .join("")}
+              ${
+                correlation.totalLocations > 3
+                  ? `<div class="muted">+ ${correlation.totalLocations - 3} more location${correlation.totalLocations - 3 > 1 ? "s" : ""}</div>`
+                  : ""
+              }
             </div>
           </div>
         `
@@ -649,8 +866,30 @@ function renderFinding(
             <div class="action-card">
               <div class="block-title">Recommendation</div>
               <p>${escapeHtml(finding.recommendation)}</p>
+              ${
+                finding.frameworkRecommendation
+                  ? `
+                <div class="framework-tip">
+                  <strong>Framework tip:</strong> ${escapeHtml(finding.frameworkRecommendation)}
+                </div>
+              `
+                  : ""
+              }
             </div>
           </div>
+
+          ${
+            finding.ownership &&
+            finding.ownership.reason &&
+            finding.ownership.type !== "unknown"
+              ? `
+            <div class="ownership-hint">
+              <span class="ownership-hint-label">Owner hint:</span>
+              <span class="ownership-hint-text">${escapeHtml(finding.ownership.reason)}</span>
+            </div>
+          `
+              : ""
+          }
 
           ${
             finding.learnMoreUrl
@@ -673,14 +912,107 @@ function renderFinding(
 // Utility Helpers
 // ═══════════════════════════════════════
 
-function detectFrameworkLabel(report: Report): string {
-  if (!report.correlationResult) return "Unknown";
-  const routeMap = report.correlationResult.routeMaps?.[0];
-  if (!routeMap) return "Unknown";
-  if (routeMap.pageFile.includes("app/") && routeMap.pageFile.includes("page."))
-    return "Next.js (App Router)";
-  if (routeMap.pageFile.includes("pages/")) return "Next.js (Pages Router)";
-  return "Detected";
+function formatEnvironmentLabel(env: EnvironmentContext): string {
+  if (env.isLocalDev) {
+    return "Local Development";
+  }
+
+  switch (env.runtimeEnvironment) {
+    case "preview":
+      return "Preview";
+    case "staging":
+      return "Staging";
+    case "production":
+      return "Production";
+    default:
+      return "Unknown";
+  }
+}
+
+function formatFrameworkLabel(framework: {
+  name: string;
+  version?: string;
+}): string {
+  let label = framework.name.charAt(0).toUpperCase() + framework.name.slice(1);
+  if (framework.version) {
+    label += ` v${framework.version}`;
+  }
+  return label;
+}
+
+function formatOwnershipLabel(type: string): string {
+  const labels: Record<string, string> = {
+    "app-owned": "App",
+    "framework-owned": "Framework",
+    "config-owned": "Config",
+    "infra-owned": "Infra",
+    "third-party": "3rd Party",
+    unknown: "",
+  };
+  return labels[type] || type;
+}
+
+function formatPriorityLabel(priority: string): string {
+  const labels: Record<string, string> = {
+    "quick-win": "⚡ Quick Win",
+    "high-impact": "🎯 High Impact",
+    investigate: "🔍 Investigate",
+    monitor: "👁 Monitor",
+    highest: "🔝 Highest",
+    high: "📈 High",
+    medium: "⚖️ Medium",
+    low: "📉 Low",
+    lowest: "🔻 Lowest",
+    none: "",
+  };
+  return labels[priority] || priority;
+}
+
+function formatEvidenceDataHtml(data: unknown): string {
+  if (data === null || data === undefined) {
+    return String(data);
+  }
+
+  if (typeof data === "string") {
+    return data.length > 200 ? data.substring(0, 200) + "..." : data;
+  }
+
+  if (typeof data === "number" || typeof data === "boolean") {
+    return String(data);
+  }
+
+  if (typeof data === "object" && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+
+    if ("value" in obj) {
+      const unit = obj.unit ? String(obj.unit) : "";
+      let result = `${obj.value}${unit ? ` ${unit}` : ""}`;
+      if ("threshold" in obj) {
+        result += ` (threshold: ${obj.threshold}${unit ? ` ${unit}` : ""})`;
+      }
+      return result;
+    }
+
+    if ("note" in obj && typeof obj.note === "string") {
+      return obj.note;
+    }
+
+    const entries = Object.entries(obj).filter(([k]) => !k.startsWith("_"));
+    if (entries.length <= 4) {
+      return entries.map(([k, v]) => `${k}: ${v}`).join(", ");
+    }
+
+    return JSON.stringify(data);
+  }
+
+  if (Array.isArray(data)) {
+    if (data.length <= 3) {
+      return data.map(String).join(", ");
+    }
+    return `${data.slice(0, 3).map(String).join(", ")} ... +${data.length - 3} more`;
+  }
+
+  return JSON.stringify(data);
 }
 
 function getScoreClass(score: number): string {

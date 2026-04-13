@@ -7,6 +7,8 @@ import type {
   Severity,
   Category,
   RootCause,
+  FrameworkInfo,
+  EnvironmentContext,
 } from "@fpd/shared-types";
 import { SEVERITY_WEIGHT } from "@fpd/shared-types";
 import { calculateFinalScore } from "../scoring/scoring.engine.js";
@@ -19,15 +21,14 @@ export interface CreateReportInput {
   metrics: Metrics;
   duration: number;
   options?: ReportOptions;
+  framework?: FrameworkInfo;
+  environment?: EnvironmentContext;
 }
 
-/**
- * Create a complete analysis report
- */
 export function createReport(input: CreateReportInput): Report {
-  const { url, findings, metrics, duration, options } = input;
+  const { url, findings, metrics, duration, options, framework, environment } =
+    input;
 
-  // Filter findings if options specified
   let filteredFindings = findings;
 
   if (options?.minSeverity) {
@@ -43,13 +44,15 @@ export function createReport(input: CreateReportInput): Report {
     );
   }
 
-  // Sort findings by severity (most severe first)
   filteredFindings = [...filteredFindings].sort(
     (a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity],
   );
 
   const scoringResult = calculateFinalScore(filteredFindings);
-  const rootCauses = extractRootCauses(filteredFindings);
+
+  const frameworkName = framework?.name || environment?.detectedFramework;
+  const rootCauses = extractRootCauses(filteredFindings, frameworkName);
+
   const summary = createSummary(filteredFindings, scoringResult, rootCauses);
 
   const report: Report = {
@@ -66,26 +69,31 @@ export function createReport(input: CreateReportInput): Report {
     },
   };
 
+  if (framework) {
+    report.framework = framework;
+  }
+
+  if (environment) {
+    report.environment = environment;
+  }
+
   if (options?.includeDebug) {
     report.debug = {
       originalFindingsCount: findings.length,
       filteredFindingsCount: filteredFindings.length,
       options,
+      frameworkDetected: frameworkName,
     };
   }
 
   return report;
 }
 
-/**
- * Create summary statistics from findings
- */
 function createSummary(
   findings: Finding[],
   scoringResult: FinalScoreResult,
   rootCauses: RootCause[],
 ): ReportSummary {
-  // Count by severity
   const bySeverity: Record<Severity, number> = {
     critical: 0,
     warning: 0,
@@ -109,7 +117,6 @@ function createSummary(
     byCategory[finding.category]++;
   }
 
-  // Generate headline
   const headline = generateHeadline(findings, bySeverity);
 
   return {
@@ -128,9 +135,6 @@ function createSummary(
   };
 }
 
-/**
- * Generate a one-line summary headline
- */
 function generateHeadline(
   findings: Finding[],
   bySeverity: Record<Severity, number>,

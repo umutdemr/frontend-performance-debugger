@@ -7,16 +7,17 @@ import type {
   RootCause,
   FindingCorrelations,
   ProjectStack,
+  EnvironmentContext,
+  OwnershipHint,
+  CategoryScore,
 } from "@fpd/shared-types";
 import { SEVERITY_LABEL, CATEGORY_LABEL } from "@fpd/shared-types";
 
-/**
- * ANSI color codes
- */
 const COLORS = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
   dim: "\x1b[2m",
+  italic: "\x1b[3m",
 
   red: "\x1b[31m",
   green: "\x1b[32m",
@@ -25,15 +26,13 @@ const COLORS = {
   magenta: "\x1b[35m",
   cyan: "\x1b[36m",
   white: "\x1b[37m",
+  gray: "\x1b[90m",
 
   bgRed: "\x1b[41m",
   bgGreen: "\x1b[42m",
   bgYellow: "\x1b[43m",
 } as const;
 
-/**
- * Severity to color mapping
- */
 const SEVERITY_COLOR: Record<Severity, string> = {
   critical: COLORS.red,
   warning: COLORS.yellow,
@@ -41,13 +40,9 @@ const SEVERITY_COLOR: Record<Severity, string> = {
   success: COLORS.green,
 };
 
-/**
- * Format report for terminal output
- */
 export function formatAsTerminal(report: Report): string {
   const lines: string[] = [];
 
-  // Header
   lines.push("");
   lines.push(
     `${COLORS.bold}${COLORS.cyan}╔════════════════════════════════════════════════════════════╗${COLORS.reset}`,
@@ -60,31 +55,48 @@ export function formatAsTerminal(report: Report): string {
   );
   lines.push("");
 
-  // URL and timestamp
   lines.push(`${COLORS.dim}URL:${COLORS.reset}       ${report.url}`);
   lines.push(
     `${COLORS.dim}Analyzed:${COLORS.reset}  ${new Date(report.timestamp).toLocaleString()}`,
   );
   lines.push(`${COLORS.dim}Duration:${COLORS.reset}  ${report.duration}ms`);
 
-  // Framework Detection
-  const projectStack = getDetectedProjectStack(report);
-  if (projectStack && projectStack.metaFramework !== "unknown") {
-    const stackLabel = formatStackLabel(projectStack);
+  const analysisMode = (report as Report & { analysisMode?: string })
+    .analysisMode;
+  if (analysisMode) {
     lines.push(
-      `${COLORS.dim}Framework:${COLORS.reset} ${COLORS.green}${stackLabel}${COLORS.reset}`,
+      `${COLORS.dim}Mode:${COLORS.reset}      ${analysisMode === "filesystem" ? `${COLORS.yellow}filesystem${COLORS.reset}` : `${COLORS.cyan}runtime${COLORS.reset}`}`,
     );
   }
 
-  // Route Source
-  const routeFile = detectRouteFile(report, projectStack);
+  if (report.environment) {
+    const envLine = formatEnvironmentLine(report.environment);
+    if (envLine) {
+      lines.push(envLine);
+    }
+  }
+
+  if (report.framework) {
+    lines.push(
+      `${COLORS.dim}Framework:${COLORS.reset} ${COLORS.green}${formatFrameworkInfo(report.framework)}${COLORS.reset}`,
+    );
+  } else {
+    const projectStack = getDetectedProjectStack(report);
+    if (projectStack && projectStack.metaFramework !== "unknown") {
+      const stackLabel = formatStackLabel(projectStack);
+      lines.push(
+        `${COLORS.dim}Framework:${COLORS.reset} ${COLORS.green}${stackLabel}${COLORS.reset}`,
+      );
+    }
+  }
+
+  const routeFile = detectRouteFile(report, getDetectedProjectStack(report));
   if (routeFile) {
     lines.push(
       `${COLORS.dim}Route:${COLORS.reset}     ${COLORS.cyan}${routeFile}${COLORS.reset}`,
     );
   }
 
-  // Correlation Summary
   if (report.correlationResult) {
     const cr = report.correlationResult;
     const correlationColor =
@@ -97,14 +109,17 @@ export function formatAsTerminal(report: Report): string {
 
   lines.push("");
 
-  // Score & Breakdown
   if (report.summary.score !== undefined) {
-    const scoreColor = getScoreColor(report.summary.score);
+    const scoreLabel = getScoreLabel(report);
+    const scoreColor = getScoreColor(report, scoreLabel);
+
     lines.push(
-      `${COLORS.bold}Score:${COLORS.reset} ${scoreColor}${report.summary.score}/100${COLORS.reset}`,
+      `${COLORS.bold}Score:${COLORS.reset} ${scoreColor}${report.summary.score}/100${COLORS.reset} ${COLORS.dim}(${scoreLabel})${COLORS.reset}`,
     );
 
-    if (report.summary.breakdown) {
+    if (report.categoryScores) {
+      lines.push(formatCategoryScores(report.categoryScores));
+    } else if (report.summary.breakdown) {
       lines.push(
         `${COLORS.dim}  ├─ Performance:  ${report.summary.breakdown.performance}${COLORS.reset}`,
       );
@@ -119,9 +134,25 @@ export function formatAsTerminal(report: Report): string {
       );
     }
     lines.push("");
+
+    if (report.scoreBreakdown && report.scoreBreakdown.explanation) {
+      const significantExplanations = report.scoreBreakdown.explanation.filter(
+        (e) =>
+          e.includes("penalty") ||
+          e.includes("Critical") ||
+          e.includes("collapse") ||
+          e.includes("capped"),
+      );
+      if (significantExplanations.length > 0) {
+        lines.push(`${COLORS.dim}Score adjustments:${COLORS.reset}`);
+        for (const exp of significantExplanations.slice(0, 4)) {
+          lines.push(`  ${COLORS.dim}• ${exp}${COLORS.reset}`);
+        }
+        lines.push("");
+      }
+    }
   }
 
-  // Top Root Causes
   if (report.summary.topRootCauses && report.summary.topRootCauses.length > 0) {
     lines.push(`${COLORS.bold}${COLORS.red}Top Root Causes:${COLORS.reset}`);
     report.summary.topRootCauses.forEach((cause: RootCause, idx: number) => {
@@ -130,11 +161,9 @@ export function formatAsTerminal(report: Report): string {
     lines.push("");
   }
 
-  // Summary headline
   lines.push(`${COLORS.bold}${report.summary.headline}${COLORS.reset}`);
   lines.push("");
 
-  // Summary stats
   lines.push(
     `${COLORS.dim}────────────────────────────────────────${COLORS.reset}`,
   );
@@ -163,9 +192,22 @@ export function formatAsTerminal(report: Report): string {
     );
   }
 
+  if (report.findingsSummary) {
+    if (report.findingsSummary.environmentLimited > 0) {
+      lines.push("");
+      lines.push(
+        `  ${COLORS.gray}⚠ ${report.findingsSummary.environmentLimited} finding(s) have reduced confidence due to environment${COLORS.reset}`,
+      );
+    }
+    if (report.findingsSummary.downgraded > 0) {
+      lines.push(
+        `  ${COLORS.gray}↓ ${report.findingsSummary.downgraded} finding(s) were downgraded from original severity${COLORS.reset}`,
+      );
+    }
+  }
+
   lines.push("");
 
-  //Correlation Insights Summary
   if (
     report.correlationResult &&
     report.correlationResult.findingCorrelations &&
@@ -192,7 +234,6 @@ export function formatAsTerminal(report: Report): string {
         `${color}[${severityLabel.toUpperCase()}]${COLORS.reset} ${finding.title}`,
       );
 
-      // Show top 2 correlations
       for (const corr of fc.correlations.slice(0, 2)) {
         let locationLabel = `  • ${corr.location.filePath}`;
         if (corr.location.lineNumber) {
@@ -218,7 +259,6 @@ export function formatAsTerminal(report: Report): string {
     }
   }
 
-  // Findings
   if (report.findings.length > 0) {
     lines.push(
       `${COLORS.dim}────────────────────────────────────────${COLORS.reset}`,
@@ -240,10 +280,108 @@ export function formatAsTerminal(report: Report): string {
     lines.push("");
   }
 
+  if (report.environment && report.environment.analysisNotes.length > 0) {
+    lines.push(
+      `${COLORS.dim}────────────────────────────────────────${COLORS.reset}`,
+    );
+    lines.push(`${COLORS.bold}Analysis Notes${COLORS.reset}`);
+    lines.push(
+      `${COLORS.dim}────────────────────────────────────────${COLORS.reset}`,
+    );
+    for (const note of report.environment.analysisNotes) {
+      lines.push(`  ${COLORS.gray}• ${note}${COLORS.reset}`);
+    }
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 
-//Format a single finding
+function formatEnvironmentLine(env: EnvironmentContext): string {
+  const parts: string[] = [];
+
+  if (env.isLocalDev) {
+    parts.push(`${COLORS.yellow}[LOCAL DEV]${COLORS.reset}`);
+  } else if (env.runtimeEnvironment === "preview") {
+    parts.push(`${COLORS.cyan}[PREVIEW]${COLORS.reset}`);
+  } else if (env.runtimeEnvironment === "staging") {
+    parts.push(`${COLORS.cyan}[STAGING]${COLORS.reset}`);
+  } else if (env.runtimeEnvironment === "production") {
+    parts.push(`${COLORS.green}[PRODUCTION]${COLORS.reset}`);
+  }
+
+  if (env.hostType === "private-ip") {
+    parts.push(`${COLORS.dim}(private network)${COLORS.reset}`);
+  }
+
+  if (!env.cacheHeadersReliable) {
+    parts.push(
+      `${COLORS.dim}(cache headers may not reflect production)${COLORS.reset}`,
+    );
+  }
+
+  if (!env.productionLikeBuild && !env.isLocalDev) {
+    parts.push(`${COLORS.dim}(development build)${COLORS.reset}`);
+  }
+
+  if (parts.length === 0) {
+    return "";
+  }
+
+  return `${COLORS.dim}Env:${COLORS.reset}       ${parts.join(" ")}`;
+}
+
+function formatFrameworkInfo(framework: {
+  name: string;
+  version?: string;
+  confidence: string;
+}): string {
+  let label = formatFrameworkName(framework.name);
+  if (framework.version) {
+    label += ` v${framework.version}`;
+  }
+  if (framework.confidence !== "high") {
+    label += ` ${COLORS.dim}(${framework.confidence} confidence)${COLORS.reset}${COLORS.green}`;
+  }
+  return label;
+}
+
+function formatCategoryScores(
+  categoryScores: Record<string, CategoryScore>,
+): string {
+  const lines: string[] = [];
+
+  const categories = [
+    { key: "performance", label: "Performance" },
+    { key: "network", label: "Network" },
+    { key: "architecture", label: "Architecture" },
+    { key: "seoSecurity", label: "SEO/Security" },
+  ];
+
+  for (let i = 0; i < categories.length; i++) {
+    const category = categories[i];
+    if (!category) continue;
+
+    const { key, label } = category;
+    const score = categoryScores[key];
+    if (!score) continue;
+
+    const isLast = i === categories.length - 1;
+    const prefix = isLast ? "└─" : "├─";
+    const paddedLabel = label.padEnd(12);
+
+    let scoreLine = `${COLORS.dim}  ${prefix} ${paddedLabel} ${score.score}/${score.maxScore}${COLORS.reset}`;
+
+    if (score.collapsed) {
+      scoreLine += ` ${COLORS.red}[SEVERELY IMPACTED]${COLORS.reset}`;
+    }
+
+    lines.push(scoreLine);
+  }
+
+  return lines.join("\n");
+}
+
 function formatFinding(finding: Finding, report: Report): string {
   const lines: string[] = [];
   const color = SEVERITY_COLOR[finding.severity];
@@ -252,14 +390,24 @@ function formatFinding(finding: Finding, report: Report): string {
 
   let titleLine = `${color}[${severityLabel.toUpperCase()}]${COLORS.reset} ${COLORS.bold}${finding.title}${COLORS.reset}`;
 
+  if (finding.ownership && finding.ownership.type !== "unknown") {
+    titleLine += ` ${COLORS.dim}[${formatOwnershipType(finding.ownership.type)}]${COLORS.reset}`;
+  }
+
   if (finding.priority && finding.priority !== "none") {
     const pColor =
       finding.priority === "high-impact" || finding.priority === "quick-win"
         ? COLORS.magenta
         : COLORS.dim;
-    titleLine += ` ${pColor}(Priority: ${finding.priority})${COLORS.reset}`;
+    titleLine += ` ${pColor}(${finding.priority})${COLORS.reset}`;
   }
   lines.push(titleLine);
+
+  if (finding.originalSeverity) {
+    lines.push(
+      `${COLORS.gray}  ↓ Downgraded from ${SEVERITY_LABEL[finding.originalSeverity]} due to environment${COLORS.reset}`,
+    );
+  }
 
   const confText = finding.confidence ? ` | Conf: ${finding.confidence}` : "";
   lines.push(
@@ -268,15 +416,36 @@ function formatFinding(finding: Finding, report: Report): string {
 
   lines.push(`${finding.description}`);
 
+  if (
+    finding.environmentLimited &&
+    finding.environmentNotes &&
+    finding.environmentNotes.length > 0
+  ) {
+    lines.push("");
+    lines.push(
+      `  ${COLORS.gray}⚠ ${finding.environmentNotes[0]}${COLORS.reset}`,
+    );
+  }
+
   if (finding.evidence && finding.evidence.length > 0) {
     lines.push("");
     for (const e of finding.evidence) {
       if (e.type === "custom" && e.label === "Additional Items") {
-        lines.push(`  ${COLORS.dim}${e.data}${COLORS.reset}`);
+        lines.push(`  ${COLORS.dim}${String(e.data)}${COLORS.reset}`);
       } else {
-        const dataStr =
-          typeof e.data === "object" ? JSON.stringify(e.data) : e.data;
+        const dataStr = formatEvidenceData(e.data);
         lines.push(`  ${COLORS.dim}• ${e.label}: ${dataStr}${COLORS.reset}`);
+      }
+    }
+
+    if (finding.evidenceSummary && finding.evidenceSummary.truncated) {
+      const hiddenCount =
+        finding.evidenceSummary.totalCount -
+        finding.evidenceSummary.uniqueCount;
+      if (hiddenCount > 0) {
+        lines.push(
+          `  ${COLORS.dim}... and ${hiddenCount} more similar items${COLORS.reset}`,
+        );
       }
     }
   }
@@ -321,6 +490,22 @@ function formatFinding(finding: Finding, report: Report): string {
   lines.push(`${COLORS.cyan}Impact:${COLORS.reset} ${finding.impact}`);
   lines.push(`${COLORS.green}Fix:${COLORS.reset} ${finding.recommendation}`);
 
+  if (finding.frameworkRecommendation) {
+    lines.push(
+      `${COLORS.magenta}Framework tip:${COLORS.reset} ${finding.frameworkRecommendation}`,
+    );
+  }
+
+  if (
+    finding.ownership &&
+    finding.ownership.reason &&
+    finding.ownership.type !== "unknown"
+  ) {
+    lines.push(
+      `${COLORS.dim}Owner hint: ${finding.ownership.reason}${COLORS.reset}`,
+    );
+  }
+
   if (finding.learnMoreUrl) {
     lines.push(
       `${COLORS.dim}Learn more: ${finding.learnMoreUrl}${COLORS.reset}`,
@@ -330,10 +515,48 @@ function formatFinding(finding: Finding, report: Report): string {
   return lines.join("\n");
 }
 
-function getScoreColor(score: number): string {
+function formatOwnershipType(type: string): string {
+  const labels: Record<string, string> = {
+    "app-owned": "app",
+    "framework-owned": "framework",
+    "config-owned": "config",
+    "infra-owned": "infra",
+    "third-party": "3rd-party",
+    unknown: "unknown",
+  };
+  return labels[type] || type;
+}
+
+function getScoreColor(report: Report, label: string): string {
+  const score = report.summary.score ?? 0;
+
+  if (label === "Critical") return COLORS.red;
+  if (label === "Needs Attention") return COLORS.yellow;
   if (score >= 90) return COLORS.green;
+  if (score >= 70) return COLORS.yellow;
   if (score >= 50) return COLORS.yellow;
   return COLORS.red;
+}
+
+function getScoreLabel(report: Report): string {
+  const score = report.summary.score ?? 0;
+  const criticalCount = report.summary.bySeverity?.critical ?? 0;
+  const criticalPenalty = report.scoreBreakdown?.criticalPenalty ?? 0;
+  const analysisMode = (report as Report & { analysisMode?: string })
+    .analysisMode;
+
+  if (criticalCount > 0 || criticalPenalty > 0) {
+    if (analysisMode === "filesystem") {
+      return score <= 35 ? "Critical" : "Needs Attention";
+    }
+    return score <= 45 ? "Critical" : "Needs Attention";
+  }
+
+  if (score >= 90) return "Excellent";
+  if (score >= 70) return "Good";
+  if (score >= 50) return "Needs Improvement";
+  if (score >= 30) return "Poor";
+  return "Critical";
 }
 
 function truncateSnippet(snippet: string): string {
@@ -368,6 +591,7 @@ function formatStackLabel(stack: ProjectStack): string {
 function formatFrameworkName(framework: string): string {
   const names: Record<string, string> = {
     nextjs: "Next.js",
+    "next.js": "Next.js",
     nuxt: "Nuxt",
     remix: "Remix",
     gatsby: "Gatsby",
@@ -375,12 +599,13 @@ function formatFrameworkName(framework: string): string {
     "vite-react": "Vite + React",
     "vite-vue": "Vite + Vue",
     cra: "Create React App",
+    "create-react-app": "Create React App",
     sveltekit: "SvelteKit",
     astro: "Astro",
     "angular-cli": "Angular CLI",
     "vue-cli": "Vue CLI",
   };
-  return names[framework] || capitalizeFirst(framework);
+  return names[framework.toLowerCase()] || capitalizeFirst(framework);
 }
 
 function formatRoutingType(routing: string): string {
@@ -397,8 +622,6 @@ function capitalizeFirst(str: string): string {
   if (!str) return "";
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
-
-// Filesystem-backed detection
 
 function getDetectedProjectStack(report: Report): ProjectStack | null {
   if (report.correlationResult) {
@@ -905,32 +1128,19 @@ function findNextjsRouteFile(
 
   if (routing === "app-router") {
     const routeDir = urlPath === "/" ? "app" : `app${urlPath}`;
-    for (const base of [routeDir, `src/${routeDir}`]) {
-      for (const ext of extensions) {
-        const filePath = path.join(projectRoot, base, `page.${ext}`);
-        if (fs.existsSync(filePath)) {
-          return path.relative(projectRoot, filePath).replace(/\\/g, "/");
-        }
-      }
-    }
+
+    return (
+      findFileWithExtensions(projectRoot, `${routeDir}/page`, extensions) ||
+      findFileWithExtensions(projectRoot, `src/${routeDir}/page`, extensions)
+    );
   }
 
   if (routing === "pages-router") {
-    const pageName = urlPath === "/" ? "index" : urlPath.slice(1);
-    for (const base of ["pages", "src/pages"]) {
-      for (const ext of extensions) {
-        const filePath = path.join(projectRoot, base, `${pageName}.${ext}`);
-        if (fs.existsSync(filePath)) {
-          return path.relative(projectRoot, filePath).replace(/\\/g, "/");
-        }
-      }
-    }
-  }
+    const routeBase = urlPath === "/" ? "pages/index" : `pages${urlPath}`;
 
-  if (routing === "unknown") {
     return (
-      findNextjsRouteFile(projectRoot, urlPath, "app-router") ||
-      findNextjsRouteFile(projectRoot, urlPath, "pages-router")
+      findFileWithExtensions(projectRoot, routeBase, extensions) ||
+      findFileWithExtensions(projectRoot, `src/${routeBase}`, extensions)
     );
   }
 
@@ -943,68 +1153,20 @@ function findFileWithExtensions(
   extensions: string[],
 ): string | null {
   for (const ext of extensions) {
-    const filePath = path.join(projectRoot, `${basePath}.${ext}`);
-    if (fs.existsSync(filePath)) {
-      return path.relative(projectRoot, filePath).replace(/\\/g, "/");
+    const abs = path.join(projectRoot, `${basePath}.${ext}`);
+    if (fs.existsSync(abs)) {
+      return normalizeProjectRelative(projectRoot, abs);
     }
   }
   return null;
 }
 
-//Dependency scanning helpers (Type safe)
-
-function cleanVersion(raw: string | undefined): string | null {
-  if (!raw) return null;
-  return raw.replace(/[\^~>=<\s]*/g, "") || null;
-}
-
-function detectPackageManager(
+function normalizeProjectRelative(
   projectRoot: string,
-): ProjectStack["packageManager"] {
-  try {
-    if (fs.existsSync(path.join(projectRoot, "pnpm-lock.yaml")))
-      return "pnpm" as ProjectStack["packageManager"];
-    if (fs.existsSync(path.join(projectRoot, "yarn.lock")))
-      return "yarn" as ProjectStack["packageManager"];
-    if (fs.existsSync(path.join(projectRoot, "bun.lockb")))
-      return "bun" as ProjectStack["packageManager"];
-    if (fs.existsSync(path.join(projectRoot, "package-lock.json")))
-      return "npm" as ProjectStack["packageManager"];
-  } catch {}
-  return "unknown" as ProjectStack["packageManager"];
-}
-
-function detectStyling(
-  allDeps: Record<string, string>,
-): ProjectStack["styling"] {
-  const styling: string[] = [];
-  if (allDeps["tailwindcss"]) styling.push("tailwind");
-  if (allDeps["styled-components"]) styling.push("styled-components");
-  if (allDeps["@emotion/react"] || allDeps["@emotion/styled"])
-    styling.push("emotion");
-  if (allDeps["sass"] || allDeps["node-sass"]) styling.push("sass");
-  if (allDeps["less"]) styling.push("less");
-  if (allDeps["@mui/material"]) styling.push("material-ui");
-  if (allDeps["@chakra-ui/react"]) styling.push("chakra-ui");
-  if (allDeps["antd"]) styling.push("antd");
-  return styling as unknown as ProjectStack["styling"];
-}
-
-function detectStateManagement(
-  allDeps: Record<string, string>,
-): ProjectStack["stateManagement"] {
-  const state: string[] = [];
-  if (allDeps["redux"] || allDeps["@reduxjs/toolkit"]) state.push("redux");
-  if (allDeps["zustand"]) state.push("zustand");
-  if (allDeps["jotai"]) state.push("jotai");
-  if (allDeps["recoil"]) state.push("recoil");
-  if (allDeps["mobx"]) state.push("mobx");
-  if (allDeps["@tanstack/react-query"] || allDeps["react-query"])
-    state.push("react-query");
-  if (allDeps["swr"]) state.push("swr");
-  if (allDeps["pinia"]) state.push("pinia");
-  if (allDeps["vuex"]) state.push("vuex");
-  return state as unknown as ProjectStack["stateManagement"];
+  filePath: string,
+): string {
+  const rel = path.relative(projectRoot, filePath);
+  return rel.split(path.sep).join("/");
 }
 
 function findCorrelationForFinding(
@@ -1013,13 +1175,119 @@ function findCorrelationForFinding(
 ): FindingCorrelations | null {
   if (
     !report.correlationResult ||
-    !report.correlationResult.findingCorrelations
-  )
+    !report.correlationResult.findingCorrelations ||
+    report.correlationResult.findingCorrelations.length === 0
+  ) {
     return null;
+  }
 
-  const match = report.correlationResult.findingCorrelations.find(
-    (fc) => fc.findingId === finding.id,
+  return (
+    report.correlationResult.findingCorrelations.find(
+      (fc) => fc.findingId === finding.id,
+    ) || null
   );
+}
 
-  return match || null;
+function cleanVersion(version?: string | null): string | null {
+  if (!version) return null;
+  return version.replace(/^[^\d]*/, "").trim() || null;
+}
+
+function detectPackageManager(
+  projectRoot: string,
+): ProjectStack["packageManager"] {
+  if (fs.existsSync(path.join(projectRoot, "pnpm-lock.yaml"))) return "pnpm";
+  if (fs.existsSync(path.join(projectRoot, "yarn.lock"))) return "yarn";
+  if (fs.existsSync(path.join(projectRoot, "bun.lockb"))) return "bun";
+  if (
+    fs.existsSync(path.join(projectRoot, "package-lock.json")) ||
+    fs.existsSync(path.join(projectRoot, "npm-shrinkwrap.json"))
+  ) {
+    return "npm";
+  }
+  return "unknown";
+}
+
+function detectStyling(deps: Record<string, string>): ProjectStack["styling"] {
+  const styles: string[] = [];
+
+  if (deps["tailwindcss"]) styles.push("tailwind");
+  if (deps["styled-components"]) styles.push("styled-components");
+  if (deps["@emotion/react"] || deps["@emotion/styled"]) styles.push("emotion");
+  if (deps["sass"] || deps["node-sass"]) styles.push("sass");
+  if (deps["less"]) styles.push("less");
+  if (deps["@mui/material"]) styles.push("mui");
+  if (deps["@chakra-ui/react"]) styles.push("chakra-ui");
+
+  return styles.length > 0
+    ? (styles as unknown as ProjectStack["styling"])
+    : ([] as unknown as ProjectStack["styling"]);
+}
+
+function detectStateManagement(
+  deps: Record<string, string>,
+): ProjectStack["stateManagement"] {
+  const state: string[] = [];
+
+  if (deps["@reduxjs/toolkit"] || deps["redux"]) state.push("redux");
+  if (deps["zustand"]) state.push("zustand");
+  if (deps["mobx"]) state.push("mobx");
+  if (deps["recoil"]) state.push("recoil");
+  if (deps["jotai"]) state.push("jotai");
+  if (deps["@tanstack/react-query"] || deps["react-query"]) {
+    state.push("react-query");
+  }
+  if (deps["xstate"]) state.push("xstate");
+
+  return state.length > 0
+    ? (state as unknown as ProjectStack["stateManagement"])
+    : ([] as unknown as ProjectStack["stateManagement"]);
+}
+
+function formatEvidenceData(data: unknown): string {
+  if (data === null || data === undefined) {
+    return String(data);
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  if (typeof data === "number" || typeof data === "boolean") {
+    return String(data);
+  }
+
+  if (typeof data === "object" && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+
+    if ("value" in obj) {
+      const unit = obj.unit ? String(obj.unit) : "";
+      let result = `${obj.value}${unit ? ` ${unit}` : ""}`;
+
+      if ("threshold" in obj) {
+        result += ` (threshold: ${obj.threshold}${unit ? ` ${unit}` : ""})`;
+      }
+      return result;
+    }
+
+    if ("note" in obj && typeof obj.note === "string") {
+      return obj.note;
+    }
+
+    const entries = Object.entries(obj).filter(([k]) => !k.startsWith("_"));
+    if (entries.length <= 4) {
+      return entries.map(([k, v]) => `${k}: ${v}`).join(", ");
+    }
+
+    return JSON.stringify(data);
+  }
+
+  if (Array.isArray(data)) {
+    if (data.length <= 3) {
+      return data.map(String).join(", ");
+    }
+    return `${data.slice(0, 3).map(String).join(", ")} ... and ${data.length - 3} more`;
+  }
+
+  return JSON.stringify(data);
 }
